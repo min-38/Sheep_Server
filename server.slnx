@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SheepServer/SheepServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SheepServer.Tests/SheepServer.Tests.csproj" />
+  </Folder>
+</Solution>
