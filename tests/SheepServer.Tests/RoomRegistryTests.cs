@@ -41,7 +41,7 @@ public class RoomRegistryTests
     }
 
     [Fact]
-    public void JoinRoom_ExistingCode_ReturnsTrue()
+    public void JoinRoom_ExistingCode_ReturnsJoined()
     {
         // Arrange
         int maxPlayers = 4;
@@ -49,16 +49,16 @@ public class RoomRegistryTests
         var createdRoom = _registry.GetRoomById(roomId);
 
         // Act
-        bool joinResult = _registry.JoinRoom(roomId, Guid.NewGuid());
+        JoinResult joinResult = _registry.JoinRoom(roomId, Guid.NewGuid());
 
         // Assert
         Assert.NotNull(createdRoom);
         Assert.Equal(2, createdRoom.CurrentPlayers);
-        Assert.True(joinResult);
+        Assert.Equal(JoinResult.Joined, joinResult);
     }
 
     [Fact]
-    public void JoinRoom_FullRoom_ReturnsFalse()
+    public void JoinRoom_FullRoom_ReturnsFull()
     {
         // Arrange
         int maxPlayers = 1;
@@ -66,16 +66,16 @@ public class RoomRegistryTests
         var createdRoom = _registry.GetRoomById(roomId);
 
         // Act
-        bool joinResult = _registry.JoinRoom(roomId, Guid.NewGuid());
+        JoinResult joinResult = _registry.JoinRoom(roomId, Guid.NewGuid());
 
         // Assert
-        Assert.False(joinResult);
+        Assert.Equal(JoinResult.Full, joinResult);
         Assert.NotNull(createdRoom);
         Assert.Equal(1, createdRoom.CurrentPlayers); // Should still be 1
     }
 
     [Fact]
-    public void JoinRoom_UnknownCode_ReturnsFalse()
+    public void JoinRoom_UnknownCode_ReturnsNotFound()
     {
         // Arrange
         int maxPlayers = 4;
@@ -87,7 +87,7 @@ public class RoomRegistryTests
         var joinResult = _registry.JoinRoom(unknownRoomId, Guid.NewGuid());
 
         // Assert
-        Assert.False(joinResult);
+        Assert.Equal(JoinResult.NotFound, joinResult);
     }
 
     [Fact]

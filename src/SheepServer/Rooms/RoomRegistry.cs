@@ -70,33 +70,28 @@ public class RoomRegistry
         }
     }
 
-    public bool JoinRoom(string roomId, Guid playerId)
+    public JoinResult JoinRoom(string? roomId, Guid playerId)
     {
         lock (_rooms)
         {
             var room = GetRoomById(roomId);
-            if (room != null)
-                return JoinRoom(room, playerId);
+            if (room == null) return JoinResult.NotFound;
+            return JoinRoom(room, playerId);
         }
-        return false; // Room not found
     }
 
-    private bool JoinRoom(Room room, Guid playerId)
+    private JoinResult JoinRoom(Room room, Guid playerId)
     {
-        if (room != null)
+        try
         {
-            try
-            {
-                room.AddPlayer(playerId);
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                // Room is full
-                return false;
-            }
+            room.AddPlayer(playerId);
+            return JoinResult.Joined;
         }
-        return false; // Room not found
+        catch (InvalidOperationException)
+        {
+            // Room is full
+            return JoinResult.Full;
+        }
     }
 
     public bool LeaveRoom(string? roomId, Guid playerId)
