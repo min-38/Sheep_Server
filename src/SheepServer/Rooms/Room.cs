@@ -9,6 +9,8 @@ public class Room
     private int _currentPlayers;
     private List<Guid> _players;
 
+    private int _tickNumber;
+
     public Room(string roomId, int maxPlayers)
     {
         _roomId = roomId;
@@ -18,6 +20,8 @@ public class Room
     }
 
     public string RoomId => _roomId;
+
+    public int TickNumber => _tickNumber;
 
     public int MaxPlayers
     {
@@ -65,5 +69,11 @@ public class Room
         {
             throw new InvalidOperationException("Player not found in the room.");
         }
+    }
+
+    public void Step()
+    {
+        // TickLoop이 50ms마다 부름. 시계를 읽지 않아 테스트에서 바로 부를 수 있음
+        _tickNumber++;
     }
 }

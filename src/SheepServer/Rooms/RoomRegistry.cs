@@ -1,21 +1,30 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SheepServer.Rooms;
 
 public class RoomRegistry
 {
     private Dictionary<string, Room> _rooms;
+    private Dictionary<string, CancellationTokenSource> _roomCancellationTokens = new Dictionary<string, CancellationTokenSource>();
+
 
     private readonly Func<string> _generateCode;
 
-    public RoomRegistry(Func<string>? generateCode = null)
+    private readonly ILogger<RoomRegistry> _logger;
+
+    public RoomRegistry(Func<string>? generateCode = null, ILogger<RoomRegistry>? logger = null)
     {
         // 룸 배열 초기화
         _rooms = new Dictionary<string, Room>();
 
         // 테스트는 정해진 코드를 넘겨 겹침 처리를 확인함. 서버는 무작위 코드를 씀
         _generateCode = generateCode ?? (() => RoomCode.GenerateRoomCode());
+
+        // 서버는 DI가 로거를 넣어 줌. 테스트처럼 로거 없이 만들면 아무것도 찍지 않음
+        _logger = logger ?? NullLogger<RoomRegistry>.Instance;
     }
 
     // Create
@@ -43,6 +52,13 @@ public class RoomRegistry
             Room newRoom = new Room(roomId, maxPlayers);
             _rooms.Add(roomId, newRoom);
 
+            CancellationTokenSource cts = new CancellationTokenSource();
+            TickLoop tickLoop = new TickLoop(newRoom, _logger);
+            _roomCancellationTokens[roomId] = cts;
+
+            // await 안 함. 루프는 방이 지워질 때까지 끝나지 않음
+            _ = tickLoop.StartAsync(cts.Token);
+
             // 룸 생성 시 방 만든 방장은 자동 입장
             JoinRoom(newRoom, hostId); // "host"는 방장 ID로 가정
 
@@ -55,19 +71,6 @@ public class RoomRegistry
     {
         if (roomId == null) return null;
         return _rooms.TryGetValue(roomId, out var room) ? room : null;
-    }
-
-    // Delete
-    public void RemoveRoom(string roomId)
-    {
-        lock (_rooms)
-        {
-            var roomToRemove = GetRoomById(roomId);
-            if (roomToRemove != null && roomToRemove.CurrentPlayers == 0)
-            {
-                _rooms.Remove(roomId);
-            }
-        }
     }
 
     public JoinResult JoinRoom(string? roomId, Guid playerId)
@@ -113,7 +116,16 @@ public class RoomRegistry
 
             // 마지막 사람이 나가면 방도 지움. 그래야 방 코드가 다시 쓰일 수 있음
             if (room.CurrentPlayers == 0)
+            {
+                if (_roomCancellationTokens.TryGetValue(room.RoomId, out var cts))
+                {
+                    cts.Cancel();
+                    cts.Dispose();
+                    _roomCancellationTokens.Remove(room.RoomId);
+                }
                 _rooms.Remove(room.RoomId);
+            }
+
 
             return true;
         }
