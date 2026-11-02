@@ -1,4 +1,4 @@
-namespace SheepServer.Tests;
+namespace SheepServer.Tests.Rooms;
 
 using SheepServer.Rooms;
 
