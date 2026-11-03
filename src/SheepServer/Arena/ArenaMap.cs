@@ -1,0 +1,39 @@
+namespace SheepServer.Arena;
+
+public class ArenaMap
+{
+    // ponytail: 크기는 임시 값. 걷는 거리가 정해지면 7명이 걷기를 마쳐도 벽에 닿지 않게 다시 잡음
+    private const int Size = 21;
+
+    // 고정된 결투장 하나를 모든 방이 같이 씀 (기술 설계서 결투장)
+    public static readonly ArenaMap Fixed = new ArenaMap(Size, Size, BuildCells());
+
+    public int Width { get; }
+    public int Height { get; }
+    public int[][] Cells { get; }
+
+    public ArenaMap(int width, int height, int[][] cells)
+    {
+        Width = width;
+        Height = height;
+        Cells = cells;
+    }
+
+    // Sheep_Client src/map.ts(SHEEP-20)의 임시 맵을 옮겨 옴. 둘레만 벽인 빈 결투장
+    private static int[][] BuildCells()
+    {
+        var cells = new int[Size][];
+        for (int y = 0; y < Size; y++)
+        {
+            cells[y] = new int[Size];
+            for (int x = 0; x < Size; x++)
+            {
+                if (x == 0 || y == 0 || x == Size - 1 || y == Size - 1)
+                {
+                    cells[y][x] = 1;
+                }
+            }
+        }
+        return cells;
+    }
+}
