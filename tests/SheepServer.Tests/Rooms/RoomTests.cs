@@ -113,6 +113,87 @@ public class RoomTests
         Assert.Equal(1.0, Find(state, _a).Angle, Tolerance);
     }
 
+    [Fact]
+    public void AddPlayer_NewcomerNotReady()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        var state = _room.Step();
+
+        // Assert
+        Assert.False(Find(state, _a).Ready);
+    }
+
+    [Fact]
+    public void SetReady_ThenUnready_ReflectedInState()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+
+        // Act
+        _room.SetReady(_a, true);
+        var ready = _room.Step();
+        _room.SetReady(_a, false);
+        var unready = _room.Step();
+
+        // Assert
+        Assert.True(Find(ready, _a).Ready);
+        Assert.False(Find(ready, _b).Ready); // 다른 사람의 준비는 그대로
+        Assert.False(Find(unready, _a).Ready);
+    }
+
+    [Fact]
+    public void SetReady_SameValueTwice_StaysReady()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        _room.SetReady(_a, true);
+        _room.SetReady(_a, true);
+        var state = _room.Step();
+
+        // Assert
+        Assert.True(Find(state, _a).Ready); // 값을 보내는 메시지라 두 번 받아도 뒤집히지 않음
+    }
+
+    [Fact]
+    public void RemovePlayer_ReadyLeaverGone_RejoinsNotReady()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.SetReady(_a, true);
+
+        // Act
+        _room.RemovePlayer(_a);
+        var afterLeave = _room.Step();
+        _room.AddPlayer(_a);
+        var afterRejoin = _room.Step();
+
+        // Assert
+        Assert.Equal(_b, Assert.Single(afterLeave.Players).Id);
+        Assert.False(Find(afterRejoin, _a).Ready); // 나갈 때 준비도 함께 빠짐
+    }
+
+    [Fact]
+    public void SetReady_PlayerNotInRoom_Ignored()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        var ex = Record.Exception(() => _room.SetReady(_b, true));
+        var state = _room.Step();
+
+        // Assert
+        Assert.Null(ex); // 클라가 보낸 값이라 던지면 연결이 끊김 (SetAngle과 같음)
+        Assert.False(Find(state, _a).Ready);
+    }
+
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
 
     private static void AssertStandsAt((double X, double Y, double Angle) spot, PlayerState player)

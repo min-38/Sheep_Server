@@ -106,6 +106,14 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
+                case "ready":
+                    // true·false인지 먼저 봄. 아니면 GetBoolean이 던져 연결이 끊김
+                    if (root.TryGetProperty("ready", out var r) && (r.ValueKind == JsonValueKind.True || r.ValueKind == JsonValueKind.False))
+                    {
+                        registry.GetRoomById(roomId)?.SetReady(playerId, r.GetBoolean());
+                    }
+                    return [];
+
                 default:
                     // 모르는 type도 무시함 (기술 설계서 미정 사항)
                     return [];

@@ -121,6 +121,18 @@ public class Room
         }
     }
 
+    public void SetReady(Guid playerId, bool ready)
+    {
+        lock (_lock)
+        {
+            var player = _players.Find(p => p.Id == playerId);
+            if (player != null)
+            {
+                player.Ready = ready;
+            }
+        }
+    }
+
     public StateMessage Step()
     {
         lock (_lock)
@@ -130,7 +142,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Ready));
             }
             return new StateMessage(_tickNumber, playerStates);
         }
