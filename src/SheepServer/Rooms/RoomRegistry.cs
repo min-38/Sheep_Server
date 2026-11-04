@@ -28,7 +28,7 @@ public class RoomRegistry
     }
 
     // Create
-    public string AddRoom(Guid hostId, int maxPlayers, Func<StateMessage, Task>? send = null)
+    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null)
     {
         lock (_rooms)
         {
@@ -73,7 +73,7 @@ public class RoomRegistry
         return _rooms.TryGetValue(roomId, out var room) ? room : null;
     }
 
-    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<StateMessage, Task>? send = null)
+    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<object, Task>? send = null)
     {
         lock (_rooms)
         {
@@ -127,7 +127,7 @@ public class RoomRegistry
     //     }
     // }
 
-    private JoinResult JoinRoom(Room room, Guid playerId, Func<StateMessage, Task>? send)
+    private JoinResult JoinRoom(Room room, Guid playerId, Func<object, Task>? send)
     {
         try
         {
@@ -136,8 +136,8 @@ public class RoomRegistry
         }
         catch (InvalidOperationException)
         {
-            // Room is full
-            return JoinResult.Full;
+            // 꽉 찼거나 판 도중임. 판은 이번 이슈에서 끝나지 않아, 판 도중이면 지금도 판 도중임
+            return room.InRound ? JoinResult.Playing : JoinResult.Full;
         }
     }
 }

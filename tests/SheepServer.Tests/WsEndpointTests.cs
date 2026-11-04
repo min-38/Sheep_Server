@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using SheepServer.Arena;
+using SheepServer.Rounds;
 
 namespace SheepServer.Tests;
 
@@ -257,6 +258,54 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task Ready_BothPlayers_BothGetCountdownAtSameServerTime()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+
+        // 방을 만들기 전의 서버 시각을 재고 일부러 기다림. 방마다 따로 잰 시계로 at을 정하면 at이 아래 범위보다 앞서게 됨
+        var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
+        double ts = serverTime.GetProperty("ts").GetDouble();
+        await Task.Delay(300);
+
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string code = created.GetProperty("code").GetString()!;
+        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        await Send(host, """{"type":"ready","ready":true}""");
+        await Send(guest, """{"type":"ready","ready":true}""");
+        var hostPhase = await ReceiveWhere(host, IsPhase);
+        var guestPhase = await ReceiveWhere(guest, IsPhase);
+
+        Assert.Equal("countdown", hostPhase.GetProperty("phase").GetString());
+        Assert.Equal("countdown", guestPhase.GetProperty("phase").GetString());
+        double at = hostPhase.GetProperty("at").GetDouble();
+        Assert.Equal(at, guestPhase.GetProperty("at").GetDouble());
+        // at은 serverTime의 ts와 같은 시계라야 클라가 내 시계로 바꿀 수 있음.
+        // 아래쪽은 기다린 300ms에서 타이머 오차를 조금 뺌. 위쪽 1초는 틱 간격과 테스트 지연을 넉넉히 봄
+        Assert.InRange(at, ts + 250 + RoundFlow.Lead, ts + 300 + RoundFlow.Lead + 1000);
+    }
+
+    [Fact]
+    public async Task JoinRoom_DuringRound_ReturnsPlaying()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        using var late = await Connect();
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string code = created.GetProperty("code").GetString()!;
+        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        await Send(host, """{"type":"ready","ready":true}""");
+        await Send(guest, """{"type":"ready","ready":true}""");
+        await ReceiveWhere(host, IsPhase);
+
+        // 카운트다운이 정해진 뒤에는 들어갈 수 없음 (기술 설계서 메시지 joinRoom)
+        var reply = await Request(late, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("playing", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {
         var res = await factory.CreateClient().GetAsync("/ws");
@@ -313,6 +362,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     static bool IsState(JsonElement m) => m.GetProperty("type").GetString() == "state";
+
+    static bool IsPhase(JsonElement m) => m.GetProperty("type").GetString() == "phase";
 
     // state에서 id가 같은 플레이어의 각도. 없으면 null
     static double? AngleOf(JsonElement state, string id)

@@ -1,5 +1,6 @@
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 using System.Diagnostics;
+using SheepServer.Clock;
 
 namespace SheepServer.Rooms;
 
@@ -27,7 +28,8 @@ public class TickLoop
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 _stopwatch.Restart();
-                var state = _room.Step();
+                // 판 단계 시각과 serverTime이 같은 시계를 씀. 아래 _stopwatch는 틱마다 다시 재는 다른 시계라 쓰지 않음
+                var messages = _room.Step(ServerClock.Now);
                 _stopwatch.Stop();
 
                 if (_stopwatch.ElapsedMilliseconds > _tickInterval.TotalMilliseconds)
@@ -35,13 +37,16 @@ public class TickLoop
                     _logger.LogWarning("[TickLoop] ROOM {RoomId}, Tick processing took {ElapsedMilliseconds} ms, which exceeds the tick interval of {TickInterval} ms.", _room.RoomId, _stopwatch.ElapsedMilliseconds, _tickInterval.TotalMilliseconds);
                 }
 
-                // 기술 설계서: 틱마다 방 안 모두에게 상태를 보냄.
+                // 기술 설계서: 틱마다 방 안 모두에게 상태를 보냄. 판 단계 알림이 있으면 state보다 먼저 감.
                 // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 방의 틱을 늦출 수 있음. 7명·로컬에선 괜찮고, 문제가 되면 연결마다 보낼 큐를 둠
                 foreach (var send in _room.GetSenders())
                 {
                     try
                     {
-                        await send(state);
+                        foreach (var message in messages)
+                        {
+                            await send(message);
+                        }
                     }
                     // 막 나간 사람의 연결이면 던짐. 아래 catch까지 가면 이 방의 틱 루프가 영영 멈추므로 그 사람만 건너뜀
                     catch (Exception ex)
