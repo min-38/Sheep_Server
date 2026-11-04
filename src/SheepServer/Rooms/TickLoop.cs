@@ -27,12 +27,27 @@ public class TickLoop
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 _stopwatch.Restart();
-                _room.Step();
+                var state = _room.Step();
                 _stopwatch.Stop();
 
                 if (_stopwatch.ElapsedMilliseconds > _tickInterval.TotalMilliseconds)
                 {
                     _logger.LogWarning("[TickLoop] ROOM {RoomId}, Tick processing took {ElapsedMilliseconds} ms, which exceeds the tick interval of {TickInterval} ms.", _room.RoomId, _stopwatch.ElapsedMilliseconds, _tickInterval.TotalMilliseconds);
+                }
+
+                // 기술 설계서: 틱마다 방 안 모두에게 상태를 보냄.
+                // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 방의 틱을 늦출 수 있음. 7명·로컬에선 괜찮고, 문제가 되면 연결마다 보낼 큐를 둠
+                foreach (var send in _room.GetSenders())
+                {
+                    try
+                    {
+                        await send(state);
+                    }
+                    // 막 나간 사람의 연결이면 던짐. 아래 catch까지 가면 이 방의 틱 루프가 영영 멈추므로 그 사람만 건너뜀
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "[TickLoop] ROOM {RoomId}, Failed to send state.", _room.RoomId);
+                    }
                 }
 
                 // 1초에 한 번만 찍음. 매 틱 찍으면 방 하나에 초당 20줄

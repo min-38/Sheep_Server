@@ -12,6 +12,9 @@ public class Room
     private readonly string _roomId;
     private readonly object _lock = new();
 
+    // 플레이어마다 state를 보내는 방법. 연결은 Program.cs가 갖고 있고 TickLoop은 이것만 부름
+    private readonly Dictionary<Guid, Func<StateMessage, Task>> _senders = new();
+
     private int _maxPlayers;
     private int _currentPlayers;
     private List<Player> _players;
@@ -56,7 +59,8 @@ public class Room
         }
     }
 
-    public void AddPlayer(Guid playerId)
+    // send는 테스트처럼 보낼 곳이 없으면 null
+    public void AddPlayer(Guid playerId, Func<StateMessage, Task>? send = null)
     {
         lock (_lock)
         {
@@ -72,6 +76,11 @@ public class Room
 
             var spot = StartPlacement.At(_players.Count, _players.Count - 1, CenterX, CenterY);
             _players[_players.Count - 1].Angle = spot.Angle;
+
+            if (send != null)
+            {
+                _senders[playerId] = send;
+            }
         }
     }
 
@@ -84,6 +93,7 @@ public class Room
             {
                 _currentPlayers--;
                 _players.Remove(player);
+                _senders.Remove(playerId);
                 ArrangePlayers();
             }
             else
@@ -123,6 +133,15 @@ public class Room
                 playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle));
             }
             return new StateMessage(_tickNumber, playerStates);
+        }
+    }
+
+    // 복사해서 돌려줌. 보내기는 await라 lock 밖에서 해야 하고, 그동안 입장과 퇴장이 목록을 바꿔도 됨
+    public List<Func<StateMessage, Task>> GetSenders()
+    {
+        lock (_lock)
+        {
+            return new List<Func<StateMessage, Task>>(_senders.Values);
         }
     }
 

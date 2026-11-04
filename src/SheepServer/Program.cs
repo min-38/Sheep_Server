@@ -34,6 +34,21 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     var playerId = Guid.NewGuid();
     string? roomId = null;
 
+    // 받기 루프의 답과 틱 루프의 state가 같은 소켓으로 나감. 보내기가 겹치면 WebSocket이 던져서 한 번에 하나씩 보냄
+    var sendLock = new SemaphoreSlim(1, 1);
+    async Task SendLocked(object message)
+    {
+        await sendLock.WaitAsync(ct);
+        try
+        {
+            await Send(ws, message, ct);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
+    }
+
     // 받은 메시지 하나를 처리하고 보낼 답들을 순서대로 돌려줌 (기술 설계서 메시지)
     object[] Handle(string text)
     {
@@ -60,28 +75,36 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                 case "createRoom":
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, MaxPlayers);
-                    return [new { type = "roomCreated", code = roomId }, mapMessage];
+                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked);
+                    return [new { type = "roomCreated", code = roomId, playerId }, mapMessage];
 
                 case "joinRoom":
                     string? code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
                         ? c.GetString()!.ToUpperInvariant() : null;
                     if (code != null && code == roomId)
                     {
-                        return [new { type = "joined", code }, mapMessage];
+                        return [new { type = "joined", code, playerId }, mapMessage];
                     }
-                    switch (registry.JoinRoom(code, playerId))
+                    switch (registry.JoinRoom(code, playerId, SendLocked))
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
                             registry.LeaveRoom(roomId, playerId);
                             roomId = code;
-                            return [new { type = "joined", code }, mapMessage];
+                            return [new { type = "joined", code, playerId }, mapMessage];
                         case JoinResult.Full:
                             return [new { type = "error", reason = "full" }];
                         default:
                             return [new { type = "error", reason = "notFound" }];
                     }
+
+                case "turn":
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사는 Room.SetAngle이 함
+                    if (root.TryGetProperty("angle", out var a) && a.ValueKind == JsonValueKind.Number && a.TryGetDouble(out double angle))
+                    {
+                        registry.GetRoomById(roomId)?.SetAngle(playerId, angle);
+                    }
+                    return [];
 
                 default:
                     // 모르는 type도 무시함 (기술 설계서 미정 사항)
@@ -96,7 +119,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         {
             foreach (var reply in Handle(text))
             {
-                await Send(ws, reply, ct);
+                await SendLocked(reply);
             }
         }
         // 클라가 닫자고 했으면 닫기 응답을 보냄. 메시지가 너무 커서 서버가 먼저 닫았으면 이미 보냈음
