@@ -205,6 +205,58 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task ClockSync_BeforeJoiningRoom_RepliesWithSameT0AndServerTime()
+    {
+        using var ws = await Connect();
+
+        // 방에 들어가기 전에도 답함. 입장 전에 시계를 맞출 수 있게 함
+        var reply = await Request(ws, """{"type":"clockSync","t0":1234.5678}""");
+
+        Assert.Equal("serverTime", reply.GetProperty("type").GetString());
+        Assert.Equal(1234.5678, reply.GetProperty("t0").GetDouble());
+        Assert.True(reply.GetProperty("ts").GetDouble() >= 0);
+    }
+
+    [Fact]
+    public async Task ClockSync_InRoom_RepliesBetweenStates()
+    {
+        using var host = await Connect();
+        await Request(host, """{"type":"createRoom"}""");
+
+        // 방 안에서는 state가 틱마다 섞여 옴. 답은 틱을 기다리지 않고 따로 옴
+        await Send(host, """{"type":"clockSync","t0":42}""");
+        var reply = await ReceiveWhere(host, m => m.GetProperty("type").GetString() == "serverTime");
+
+        Assert.Equal(42, reply.GetProperty("t0").GetDouble());
+    }
+
+    [Fact]
+    public async Task ClockSync_TwiceInARow_ServerTimeDoesNotGoBack()
+    {
+        using var ws = await Connect();
+
+        var first = await Request(ws, """{"type":"clockSync","t0":1}""");
+        var second = await Request(ws, """{"type":"clockSync","t0":2}""");
+
+        // 되돌아가지 않는 시계 (기술 설계서 시간 맞추기)
+        Assert.True(second.GetProperty("ts").GetDouble() >= first.GetProperty("ts").GetDouble());
+    }
+
+    [Fact]
+    public async Task ClockSync_T0NotANumber_NoReplyAndConnectionKeepsWorking()
+    {
+        using var ws = await Connect();
+
+        // 숫자가 아니거나, 빠졌거나, double에 담기지 않는 t0은 답하지 않음. 그래서 처음 오는 답은 마지막 요청의 것임
+        await Send(ws, """{"type":"clockSync","t0":"1"}""");
+        await Send(ws, """{"type":"clockSync"}""");
+        await Send(ws, """{"type":"clockSync","t0":1e400}""");
+        var reply = await Request(ws, """{"type":"clockSync","t0":3}""");
+
+        Assert.Equal(3, reply.GetProperty("t0").GetDouble());
+    }
+
+    [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {
         var res = await factory.CreateClient().GetAsync("/ws");

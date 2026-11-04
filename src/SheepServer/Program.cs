@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Diagnostics;
 using SheepServer.Rooms;
 using SheepServer.Arena;
 
@@ -8,6 +9,8 @@ const int MaxPlayers = 7;
 
 // 결투장 맵. 바뀌지 않아 한 번만 만들어 모든 연결이 같이 씀
 var mapMessage = new MapMessage(ArenaMap.Fixed.Width, ArenaMap.Fixed.Height, ArenaMap.Fixed.Cells);
+
+var stopwatch = Stopwatch.StartNew();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<RoomRegistry>();
@@ -111,6 +114,16 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     if (root.TryGetProperty("ready", out var r) && (r.ValueKind == JsonValueKind.True || r.ValueKind == JsonValueKind.False))
                     {
                         registry.GetRoomById(roomId)?.SetReady(playerId, r.GetBoolean());
+                    }
+                    return [];
+
+                case "clockSync":
+                    // 클라가 보낸 시각을 그대로 돌려줌. 클라가 시각을 찍어 보내는 순간과 서버가 받는 순간 사이에 네트워크 지연이 있음
+                    // 1e400 같은 값은 무한대가 돼 답을 JSON으로 만들 때 던지므로 IsFinite까지 봄
+                    if (root.TryGetProperty("t0", out var t0Prop) && t0Prop.ValueKind == JsonValueKind.Number && t0Prop.TryGetDouble(out double t0) && double.IsFinite(t0))
+                    {
+                        double ts = stopwatch.Elapsed.TotalMilliseconds;
+                        return [new { type = "serverTime", t0, ts }];
                     }
                     return [];
 
