@@ -6,8 +6,8 @@ namespace SheepServer.Rooms;
 // 방 하나의 틱 루프. 방이 생길 때 시작하고, 방이 지워져 토큰이 취소되면 멈춤
 public class TickLoop
 {
-    private readonly Room _room;
     private static readonly TimeSpan _tickInterval = TimeSpan.FromMilliseconds(50);    // 기술 설계서: 20Hz
+    private readonly Room _room;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private readonly ILogger _logger;
 

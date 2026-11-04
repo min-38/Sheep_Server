@@ -83,20 +83,6 @@ public class RoomRegistry
         }
     }
 
-    private JoinResult JoinRoom(Room room, Guid playerId)
-    {
-        try
-        {
-            room.AddPlayer(playerId);
-            return JoinResult.Joined;
-        }
-        catch (InvalidOperationException)
-        {
-            // Room is full
-            return JoinResult.Full;
-        }
-    }
-
     public bool LeaveRoom(string? roomId, Guid playerId)
     {
         lock (_rooms)
@@ -140,4 +126,18 @@ public class RoomRegistry
     //         RemoveAll(room => room.CurrentPlayers == 0);
     //     }
     // }
+
+    private JoinResult JoinRoom(Room room, Guid playerId)
+    {
+        try
+        {
+            room.AddPlayer(playerId);
+            return JoinResult.Joined;
+        }
+        catch (InvalidOperationException)
+        {
+            // Room is full
+            return JoinResult.Full;
+        }
+    }
 }

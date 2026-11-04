@@ -8,16 +8,16 @@ public class ArenaMap
     // 고정된 결투장 하나를 모든 방이 같이 씀 (기술 설계서 결투장)
     public static readonly ArenaMap Fixed = new ArenaMap(Size, Size, BuildCells());
 
-    public int Width { get; }
-    public int Height { get; }
-    public int[][] Cells { get; }
-
     public ArenaMap(int width, int height, int[][] cells)
     {
         Width = width;
         Height = height;
         Cells = cells;
     }
+
+    public int Width { get; }
+    public int Height { get; }
+    public int[][] Cells { get; }
 
     // Sheep_Client src/map.ts(SHEEP-20)의 임시 맵을 옮겨 옴. 둘레만 벽인 빈 결투장
     private static int[][] BuildCells()
