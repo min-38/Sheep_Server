@@ -28,7 +28,7 @@ public class RoomRegistry
     }
 
     // Create
-    public string AddRoom(Guid hostId, int maxPlayers)
+    public string AddRoom(Guid hostId, int maxPlayers, Func<StateMessage, Task>? send = null)
     {
         lock (_rooms)
         {
@@ -60,7 +60,7 @@ public class RoomRegistry
             _ = tickLoop.StartAsync(cts.Token);
 
             // 룸 생성 시 방 만든 방장은 자동 입장
-            JoinRoom(newRoom, hostId); // "host"는 방장 ID로 가정
+            JoinRoom(newRoom, hostId, send); // "host"는 방장 ID로 가정
 
             return roomId;
         }
@@ -73,27 +73,13 @@ public class RoomRegistry
         return _rooms.TryGetValue(roomId, out var room) ? room : null;
     }
 
-    public JoinResult JoinRoom(string? roomId, Guid playerId)
+    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<StateMessage, Task>? send = null)
     {
         lock (_rooms)
         {
             var room = GetRoomById(roomId);
             if (room == null) return JoinResult.NotFound;
-            return JoinRoom(room, playerId);
-        }
-    }
-
-    private JoinResult JoinRoom(Room room, Guid playerId)
-    {
-        try
-        {
-            room.AddPlayer(playerId);
-            return JoinResult.Joined;
-        }
-        catch (InvalidOperationException)
-        {
-            // Room is full
-            return JoinResult.Full;
+            return JoinRoom(room, playerId, send);
         }
     }
 
@@ -140,4 +126,18 @@ public class RoomRegistry
     //         RemoveAll(room => room.CurrentPlayers == 0);
     //     }
     // }
+
+    private JoinResult JoinRoom(Room room, Guid playerId, Func<StateMessage, Task>? send)
+    {
+        try
+        {
+            room.AddPlayer(playerId, send);
+            return JoinResult.Joined;
+        }
+        catch (InvalidOperationException)
+        {
+            // Room is full
+            return JoinResult.Full;
+        }
+    }
 }
