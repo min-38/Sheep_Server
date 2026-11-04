@@ -8,10 +8,12 @@ public class Player
         X = x;
         Y = y;
         Angle = angle;
+        Ready = false;
     }
 
     public Guid Id { get; }
     public double X { get; set; }
     public double Y { get; set; }
     public double Angle { get; set; }
+    public bool Ready { get; set; }
 }

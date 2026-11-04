@@ -149,6 +149,62 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task Ready_OtherPlayerSeesReadyThenUnready()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        await Send(guest, """{"type":"ready","ready":true}""");
+        var ready = await ReceiveWhere(host, m => IsState(m) && ReadyOf(m, guestId) == true);
+        Assert.False(ReadyOf(ready, hostId)); // 방장은 준비하지 않았음
+
+        await Send(guest, """{"type":"ready","ready":false}""");
+        await ReceiveWhere(host, m => IsState(m) && ReadyOf(m, guestId) == false);
+    }
+
+    [Fact]
+    public async Task Ready_NotABoolean_IgnoredAndConnectionKeepsWorking()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // true·false가 아니면 버림. 한 연결의 메시지는 차례대로 처리되므로, 뒤에 보낸 각도가 보이면 앞의 것도 처리된 것임
+        await Send(guest, """{"type":"ready","ready":"true"}""");
+        await Send(guest, """{"type":"ready","ready":1}""");
+        await Send(guest, """{"type":"ready"}""");
+        await Send(guest, """{"type":"turn","angle":2.5}""");
+        var state = await ReceiveWhere(host, m => IsState(m) && AngleOf(m, guestId) == 2.5);
+        Assert.False(ReadyOf(state, guestId));
+
+        // 위의 것 때문에 연결이 끊기면 이 준비가 오지 않음
+        await Send(guest, """{"type":"ready","ready":true}""");
+        await ReceiveWhere(host, m => IsState(m) && ReadyOf(m, guestId) == true);
+    }
+
+    [Fact]
+    public async Task Ready_BeforeJoiningRoom_Ignored()
+    {
+        using var ws = await Connect();
+
+        // 방 밖에서 보낸 준비는 버림. 그 뒤 방을 만들어도 준비 안 한 채로 들어감
+        await Send(ws, """{"type":"ready","ready":true}""");
+        var created = await Request(ws, """{"type":"createRoom"}""");
+        string playerId = created.GetProperty("playerId").GetString()!;
+
+        var state = await ReceiveWhere(ws, m => IsState(m) && ReadyOf(m, playerId) != null);
+        Assert.False(ReadyOf(state, playerId));
+    }
+
+    [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {
         var res = await factory.CreateClient().GetAsync("/ws");
@@ -214,6 +270,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("angle").GetDouble();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 준비 여부. 없으면 null
+    static bool? ReadyOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("ready").GetBoolean();
             }
         }
         return null;
