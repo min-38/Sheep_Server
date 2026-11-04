@@ -6,4 +6,5 @@ public enum JoinResult
     Joined,
     NotFound,
     Full,
+    Playing,
 }

@@ -17,12 +17,16 @@ public class TickLoopTests
 
         // 막 나간 사람의 소켓처럼 보내기가 던짐. 이 때문에 방 전체의 틱 루프가 멈추면 안 됨
         room.AddPlayer(Guid.NewGuid(), _ => throw new WebSocketException());
-        room.AddPlayer(Guid.NewGuid(), state =>
+        // state 말고 판 단계 알림도 같은 길로 가므로 state만 셈
+        room.AddPlayer(Guid.NewGuid(), message =>
         {
-            ticks.Add(state.Tick);
-            if (ticks.Count == 3)
+            if (message is StateMessage state)
             {
-                gotThree.TrySetResult();
+                ticks.Add(state.Tick);
+                if (ticks.Count == 3)
+                {
+                    gotThree.TrySetResult();
+                }
             }
             return Task.CompletedTask;
         });

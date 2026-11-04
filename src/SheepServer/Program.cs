@@ -1,16 +1,14 @@
 using System.Net.WebSockets;
 using System.Text.Json;
-using System.Diagnostics;
 using SheepServer.Rooms;
 using SheepServer.Arena;
+using SheepServer.Clock;
 
 // 컨셉 기획서: 한 방 2~7명
 const int MaxPlayers = 7;
 
 // 결투장 맵. 바뀌지 않아 한 번만 만들어 모든 연결이 같이 씀
 var mapMessage = new MapMessage(ArenaMap.Fixed.Width, ArenaMap.Fixed.Height, ArenaMap.Fixed.Cells);
-
-var stopwatch = Stopwatch.StartNew();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<RoomRegistry>();
@@ -97,6 +95,8 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                             return [new { type = "joined", code, playerId }, mapMessage];
                         case JoinResult.Full:
                             return [new { type = "error", reason = "full" }];
+                        case JoinResult.Playing:
+                            return [new { type = "error", reason = "playing" }];
                         default:
                             return [new { type = "error", reason = "notFound" }];
                     }
@@ -122,7 +122,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     // 1e400 같은 값은 무한대가 돼 답을 JSON으로 만들 때 던지므로 IsFinite까지 봄
                     if (root.TryGetProperty("t0", out var t0Prop) && t0Prop.ValueKind == JsonValueKind.Number && t0Prop.TryGetDouble(out double t0) && double.IsFinite(t0))
                     {
-                        double ts = stopwatch.Elapsed.TotalMilliseconds;
+                        double ts = ServerClock.Now;
                         return [new { type = "serverTime", t0, ts }];
                     }
                     return [];
