@@ -10,8 +10,14 @@ public static class RoundFlow
     // ms. 3, 2, 1을 이 간격마다 보여 줌 (시스템 기획서 판 흐름 시간). ponytail: 임시 값
     public const double CountdownInterval = 1000;
 
-    // ms. ponytail: 임시 값. SHEEP-31에서 걷는 거리와 속도가 정해지면 그 값으로 바꿈
-    public const double WalkDuration = 3000;
+    // 칸. 걷기가 끝나면 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
+    public const double WalkDistance = 3;
+
+    // 칸/초. 모두 같은 속도로 걸음 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
+    public const double WalkSpeed = 1;
+
+    // ms. 걷는 거리와 속도로 정해짐. 거리 ÷ 속도는 초라서 1000을 곱함
+    public const double WalkDuration = WalkDistance / WalkSpeed * 1000;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌
     public static Round Advance(Round current, double now, int players, int ready)

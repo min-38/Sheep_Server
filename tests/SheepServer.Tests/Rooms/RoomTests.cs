@@ -286,6 +286,160 @@ public class RoomTests
         AssertSamePlace(Find(before, _b), Find(state, _b));
     }
 
+    [Fact]
+    public void AddPlayer_NewcomerStands()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(Pose.Stand, Find(state, _a).Pose); // 기술 설계서 메시지 state: 들어올 때는 stand
+    }
+
+    [Fact]
+    public void Step_WalkStarts_EveryoneTurnsOutwardAndWalks()
+    {
+        // Arrange
+        AddReady(_a, _b, _c);
+        _room.SetAngle(_a, 1.0); // 준비 중에 돌아 둔 각도는 걷는 방향과 상관없음
+        double walkAt = ScheduleWalk(_room);
+
+        // Act
+        var state = StateAt(walkAt);
+
+        // Assert
+        foreach (var player in state.Players)
+        {
+            AssertFacesOutward(player);
+            Assert.Equal(Pose.Walk, player.Pose);
+        }
+        AssertWalked(3, 0, 0, Find(state, _a)); // 막 출발해 아직 시작 자리임
+    }
+
+    [Fact]
+    public void Step_HalfwayThroughWalk_HalfTheDistanceOutward()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+
+        // Assert
+        // 같은 속도로 걸으니 시간이 절반이면 거리도 절반
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 2, Find(state, _a));
+        AssertWalked(2, 1, RoundFlow.WalkDistance / 2, Find(state, _b));
+        Assert.All(state.Players, p => Assert.Equal(Pose.Walk, p.Pose));
+    }
+
+    [Fact]
+    public void Step_WalkStartTickLate_WalkFollowsScheduledTime()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt + 40); // 틱은 50ms마다라 걷기 시각보다 늦게 옴
+
+        // Act
+        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+
+        // Assert
+        // 늦게 온 틱부터 재면 덜 걸어서, 걷기가 끝날 때 R + 걷는 거리에 못 미침 (RoundFlow가 NextAt에 더하는 것과 같은 이유)
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 2, Find(state, _a));
+    }
+
+    [Fact]
+    public void Step_WalkEnds_StopsAtWalkDistanceAndStands()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        double duelAt = walkAt + RoundFlow.WalkDuration;
+        _room.Step(walkAt);
+
+        // Act
+        var atEnd = StateAt(duelAt); // 걷기가 끝나는 틱. 판은 이 틱에 결투로 넘어감
+        var later = StateAt(duelAt + 1000);
+
+        // Assert
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(atEnd, _a));
+        AssertWalked(2, 1, RoundFlow.WalkDistance, Find(atEnd, _b));
+        Assert.All(atEnd.Players, p => Assert.Equal(Pose.Stand, p.Pose));
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(later, _a)); // 걷는 거리에 닿으면 더 가지 않음
+        AssertFacesOutward(Find(later, _a)); // 멈춘 뒤에도 바깥을 보고 섬
+    }
+
+    [Fact]
+    public void Step_SevenFinishWalk_AllOnEmptyCells()
+    {
+        // Arrange
+        var room = new Room("Seven", 7);
+        var ids = new List<Guid>();
+        for (int i = 0; i < 7; i++)
+        {
+            var id = Guid.NewGuid();
+            ids.Add(id);
+            room.AddPlayer(id);
+            room.SetReady(id, true);
+        }
+        double walkAt = ScheduleWalk(room);
+        room.Step(walkAt);
+
+        // Act
+        var state = room.Step(walkAt + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
+
+        // Assert
+        // 기술 설계서 결투장 크기: 7명이 걷기를 마쳐도 벽에 닿지 않음
+        for (int i = 0; i < 7; i++)
+        {
+            var player = Find(state, ids[i]);
+            AssertWalked(7, i, RoundFlow.WalkDistance, player);
+            Assert.Equal(0, ArenaMap.Fixed.Cells[(int)player.Y][(int)player.X]);
+        }
+    }
+
+    [Fact]
+    public void SetAngle_WhileWalking_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.SetAngle(_a, 1.0);
+        var state = StateAt(walkAt + 100);
+
+        // Assert
+        // 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
+        AssertFacesOutward(Find(state, _a));
+        AssertWalked(2, 0, RoundFlow.WalkDistance * 100 / RoundFlow.WalkDuration, Find(state, _a));
+    }
+
+    [Fact]
+    public void SetAngle_AfterWalk_Applied()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        double duelAt = walkAt + RoundFlow.WalkDuration;
+        _room.Step(walkAt);
+        _room.Step(duelAt);
+
+        // Act
+        _room.SetAngle(_a, 1.0);
+        var state = StateAt(duelAt + 50);
+
+        // Assert
+        Assert.Equal(1.0, Find(state, _a).Angle, Tolerance); // 걷기가 끝나면 다시 돌아 겨눌 수 있음
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a)); // 돌아도 자리는 그대로 (기술 설계서 명중 판정: 결투 중에는 아무도 걷지 않음)
+    }
+
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
 
     private static void AssertStandsAt((double X, double Y, double Angle) spot, PlayerState player)
@@ -306,6 +460,34 @@ public class RoomTests
     {
         Assert.Equal(expected.X, actual.X, Tolerance);
         Assert.Equal(expected.Y, actual.Y, Tolerance);
+    }
+
+    // 모두 준비한 방을 카운트다운 시작까지 돌리고, 걷기가 시작하는 시각을 돌려줌. 그 시각의 틱은 부르지 않음
+    private static double ScheduleWalk(Room room)
+    {
+        room.Step(1000); // 카운트다운이 정해짐
+        double countdownAt = 1000 + RoundFlow.Lead;
+        room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
+        return countdownAt + 3 * RoundFlow.CountdownInterval;
+    }
+
+    // count명 중 index번이 시작 자리에서 바깥으로 walked칸 걸어간 자리에 있는지 봄.
+    // 바깥은 중심에서 시작 자리로 가는 방향이라, 중심에서 R + walked만큼 떨어짐
+    private static void AssertWalked(int count, int index, double walked, PlayerState player)
+    {
+        var spot = StartPlacement.At(count, index, CenterX, CenterY);
+        double scale = (StartPlacement.Radius + walked) / StartPlacement.Radius;
+        Assert.Equal(CenterX + (spot.X - CenterX) * scale, player.X, Tolerance);
+        Assert.Equal(CenterY + (spot.Y - CenterY) * scale, player.Y, Tolerance);
+    }
+
+    // 시선과 (자리 - 중심)의 내적이 중심까지 거리와 같으면 정확히 바깥을 봄 (StartPlacementTests의 FacesCenter와 반대)
+    private static void AssertFacesOutward(PlayerState player)
+    {
+        double dx = player.X - CenterX;
+        double dy = player.Y - CenterY;
+        Assert.Equal(Math.Sqrt(dx * dx + dy * dy), Math.Cos(player.Angle) * dx + Math.Sin(player.Angle) * dy, Tolerance);
+        Assert.True(player.Angle >= 0 && player.Angle < 2 * Math.PI, $"angle {player.Angle}는 turn과 같은 범위(0 이상 2π 미만)여야 함");
     }
 
     // 틱 하나를 돌리고 그 틱의 state를 돌려줌
