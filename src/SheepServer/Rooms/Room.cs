@@ -25,6 +25,9 @@ public class Room
     // 판 흐름. 처음엔 준비 중이고, 바꾸는 규칙은 RoundFlow에 있음
     private Round _round = new(RoundPhase.Lobby, null, 0);
 
+    // 걷기가 시작한 서버 시각(ms). 걷는 중일 때만 값이 있고, 다 걸으면 null
+    private double? _walkAt;
+
     public Room(string roomId, int maxPlayers)
     {
         _roomId = roomId;
@@ -132,8 +135,9 @@ public class Room
     {
         lock (_lock)
         {
-            // 클라가 보낸 값이라 던지면 연결이 끊김. 범위 밖이나 없는 사람은 조용히 버림 (기술 설계서 메시지 turn)
-            if (!double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI)
+            // 클라가 보낸 값이라 던지면 연결이 끊김. 범위 밖이나 없는 사람은 조용히 버림 (기술 설계서 메시지 turn).
+            // 걷는 동안에는 서버가 방향을 정해서 버림
+            if (!double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || _round.Phase == RoundPhase.Walk)
             {
                 return;
             }
@@ -188,12 +192,52 @@ public class Room
             {
                 messages.Add(new PhaseMessage(next.Next.Value, next.NextAt));
             }
+
+            if (_round.Phase != RoundPhase.Walk && next.Phase == RoundPhase.Walk)
+            {
+                _walkAt = _round.NextAt;
+
+                // 지금 각도에 π를 더하면 안 됨. 준비 중에 돌았을 수 있어 위치로 바깥(중심에서 멀어지는 쪽)을 구함
+                foreach (var player in _players)
+                {
+                    // Atan2는 y를 먼저 받고 -π~π를 돌려줌. turn과 같은 0 이상 2π 미만으로 맞춤
+                    double outward = Math.Atan2(player.Y - CenterY, player.X - CenterX);
+                    if (outward < 0)
+                    {
+                        outward += 2 * Math.PI;
+                    }
+                    player.Angle = outward;
+                }
+            }
+
             _round = next;
+
+            if (_walkAt != null)
+            {
+                // 틱마다 더하지 않고 걷기 시각부터 지난 시간으로 정함. 늦게 온 틱이 있어도 걷는 거리가 줄지 않음
+                double ratio = Math.Clamp((now - _walkAt.Value) / RoundFlow.WalkDuration, 0, 1);
+                double walked = RoundFlow.WalkDistance * ratio;
+
+                // 출발할 때 모두 중심에서 R만큼 떨어져 바깥을 봄. 그래서 지금 자리는 바라보는 쪽으로 R + 걸은 거리
+                foreach (var player in _players)
+                {
+                    double distance = StartPlacement.Radius + walked;
+                    player.X = CenterX + Math.Cos(player.Angle) * distance;
+                    player.Y = CenterY + Math.Sin(player.Angle) * distance;
+                    player.Pose = ratio < 1 ? Pose.Walk : Pose.Stand;
+                }
+
+                // 다 걸으면 그만 계산함. 계속하면 결투 중에 돌 때마다 자리가 원을 따라 미끄러짐
+                if (ratio >= 1)
+                {
+                    _walkAt = null;
+                }
+            }
 
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Ready));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;

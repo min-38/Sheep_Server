@@ -15,5 +15,6 @@ public class Player
     public double X { get; set; }
     public double Y { get; set; }
     public double Angle { get; set; }
+    public Pose Pose { get; set; } = Pose.Stand;
     public bool Ready { get; set; }
 }

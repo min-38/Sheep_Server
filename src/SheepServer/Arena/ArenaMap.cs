@@ -2,7 +2,8 @@ namespace SheepServer.Arena;
 
 public class ArenaMap
 {
-    // ponytail: 크기는 임시 값. 걷는 거리가 정해지면 7명이 걷기를 마쳐도 벽에 닿지 않게 다시 잡음
+    // ponytail: 크기는 임시 값. 다 걸으면 중심에서 4칸이고 벽 안쪽까지 9.5칸이라 넉넉함.
+    // 걷는 거리를 늘리면 RoomTests의 Step_SevenFinishWalk_AllOnEmptyCells가 벽에 닿는지 확인함
     private const int Size = 21;
 
     // 고정된 결투장 하나를 모든 방이 같이 씀 (기술 설계서 결투장)
