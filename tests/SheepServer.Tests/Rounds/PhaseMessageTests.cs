@@ -9,6 +9,7 @@ public class PhaseMessageTests
     [InlineData(RoundPhase.Countdown, "countdown")]
     [InlineData(RoundPhase.Walk, "walk")]
     [InlineData(RoundPhase.Duel, "duel")]
+    [InlineData(RoundPhase.Lobby, "lobby")] // 판이 끝나 준비 중으로 돌아가는 시각
     public void Serialize_UsesMessageTableNames(RoundPhase phase, string name)
     {
         // Act
