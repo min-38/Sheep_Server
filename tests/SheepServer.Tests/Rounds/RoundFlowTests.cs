@@ -11,6 +11,11 @@ public class RoundFlowTests
     private static readonly double CountdownDuration = 3 * RoundFlow.CountdownInterval;
     private static readonly Round Lobby = new(RoundPhase.Lobby, null, 0);
 
+    private static readonly Guid A = Guid.NewGuid();
+    private static readonly Guid B = Guid.NewGuid();
+    private static readonly Guid C = Guid.NewGuid();
+    private static readonly Guid D = Guid.NewGuid();
+
     [Theory]
     [InlineData(2)]
     [InlineData(7)]
@@ -118,7 +123,7 @@ public class RoundFlowTests
 
         // Assert
         Assert.Equal(RoundPhase.Duel, round.Phase);
-        Assert.Null(round.Next); // 결투 다음(승리, 재대결)은 이후 이슈
+        Assert.Null(round.Next); // 다음 단계는 결과(승리, 재대결)가 정해질 때 정함
     }
 
     [Fact]
@@ -159,6 +164,89 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void Advance_AtLobbyTime_BackToLobbyWithNothingNext()
+    {
+        // Act
+        var round = RoundFlow.Advance(new Round(RoundPhase.Duel, RoundPhase.Lobby, 20_000), 20_000, 2, 0, Seed);
+
+        // Assert
+        // 승리 결과를 보여 준 뒤 준비 중으로 돌아감. 그 뒤 모두 준비하면 새 판이 정해짐 (기술 설계서 메시지 phase)
+        Assert.Equal(Lobby, round);
+    }
+
+    [Fact]
+    public void Advance_AtRematchCountdownTime_EntersCountdownAndSchedulesWalk()
+    {
+        // Act
+        var round = RoundFlow.Advance(new Round(RoundPhase.Duel, RoundPhase.Countdown, 20_000), 20_000, 3, 0, Seed);
+
+        // Assert
+        // 재대결은 결과를 보여 준 뒤 첫 판처럼 카운트다운부터 다시 함 (컨셉 기획서 게임 루프)
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 20_000 + CountdownDuration), round);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(0)] // 총알이 없어도 혼자 남으면 이김
+    public void Result_OneAlive_Win(int ammo)
+    {
+        // Act
+        var result = RoundFlow.Result([(A, ammo)], [B]);
+
+        // Assert
+        // 컨셉 기획서 게임 루프: 1명만 남으면 승리. 승리면 장전 수는 0 (기술 설계서 메시지 result)
+        AssertResult(result, Outcome.Win, [A], 0);
+    }
+
+    [Fact]
+    public void Result_TwoAliveSomeoneHasAmmo_GoesOn()
+    {
+        // Act
+        var bothArmed = RoundFlow.Result([(A, 2), (B, 5)], [C]);
+        var oneArmed = RoundFlow.Result([(A, 0), (B, 1)], [C]);
+
+        // Assert
+        // 결과가 없으면 null. 한 사람이라도 총알이 있으면 결투가 이어짐
+        Assert.Null(bothArmed);
+        Assert.Null(oneArmed);
+    }
+
+    [Fact]
+    public void Result_AliveAllOutOfAmmo_RematchLoadingAliveCount()
+    {
+        // Act
+        var result = RoundFlow.Result([(A, 0), (B, 0), (C, 0)], [D]);
+
+        // Assert
+        // 컨셉 기획서 규칙: 총알이 떨어지면 살아 있는 사람끼리 재대결하고 남은 인원 수만큼 장전함 (3명이면 각자 3발).
+        // 재대결하는 사람은 받은 순서대로
+        AssertResult(result, Outcome.Rematch, [A, B, C], 3);
+    }
+
+    [Fact]
+    public void Result_NobodyAlive_RematchAmongLastDown()
+    {
+        // Act
+        var result = RoundFlow.Result([], [B, C]);
+
+        // Assert
+        // 컨셉 기획서 규칙: 아무도 안 남으면 무승부로 보고 마지막에 함께 쓰러진 사람끼리 재대결함
+        AssertResult(result, Outcome.Rematch, [B, C], 2);
+    }
+
+    [Fact]
+    public void Result_NobodyAliveOneLastDown_ThatOneWins()
+    {
+        // Act
+        // 살아 있던 사람이 모두 나가고, 가장 늦게 쓰러진 사람이 혼자 방에 남음 (M4에서 아무도 안 남는 유일한 경우)
+        var result = RoundFlow.Result([], [C]);
+
+        // Assert
+        // 혼자서는 재대결할 수 없음. 상대가 모두 나가 기권한 것으로 보고 그 사람이 이김
+        AssertResult(result, Outcome.Win, [C], 0);
+    }
+
+    [Fact]
     public void DuelWait_SameSeed_SameWait()
     {
         // Act
@@ -195,5 +283,13 @@ public class RoundFlowTests
         // Assert
         // 늘 같은 값이면 타이밍을 외워 미리 반응할 수 있음 (컨셉 기획서 규칙 "시작!" 타이밍)
         Assert.True(waits.Count > 1, "시드가 달라도 대기 시간이 모두 같음");
+    }
+
+    private static void AssertResult(ResultMessage? actual, Outcome outcome, Guid[] playerIds, int rounds)
+    {
+        Assert.NotNull(actual);
+        Assert.Equal(outcome, actual.Outcome);
+        Assert.Equal(playerIds, actual.PlayerIds);
+        Assert.Equal(rounds, actual.Rounds);
     }
 }
