@@ -29,6 +29,10 @@ public class Room
     // 걷기가 시작한 서버 시각(ms). 걷는 중일 때만 값이 있고, 다 걸으면 null
     private double? _walkAt;
 
+    // 재대결이 정해지면 재대결하는 사람과 새로 장전할 총알 수. 재대결 카운트다운이 시작할 때 다시 세우고 비움
+    private IReadOnlyList<Guid>? _rematchers;
+    private int _rematchRounds;
+
     public Room(string roomId, int maxPlayers)
     {
         _roomId = roomId;
@@ -155,7 +159,7 @@ public class Room
     {
         lock (_lock)
         {
-            // 판 도중에는 버림. 판이 끝나면 모두 풂 (이후 이슈)
+            // 판 도중에는 버림. 승리가 정해질 때 모두 풂 (DecideResult)
             if (InRound)
             {
                 return;
@@ -177,8 +181,9 @@ public class Room
         {
             var messages = new List<object>();
 
-            // 결투 시각의 틱보다 발사가 먼저 올 수 있어 단계만 보지 않고 시각도 봄. 걷기 단계에서는 NextAt이 결투 시각임
-            bool dueling = _round.Phase == RoundPhase.Duel || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
+            // 결투 시각의 틱보다 발사가 먼저 올 수 있어 단계만 보지 않고 시각도 봄. 걷기 단계에서는 NextAt이 결투 시각임.
+            // 결과가 정해져 다음 단계(Next)가 생기면 그 시각까지 버림
+            bool dueling = (_round.Phase == RoundPhase.Duel && _round.Next == null) || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
             if (!dueling || !double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || !double.IsFinite(at))
             {
                 return messages;
@@ -215,9 +220,14 @@ public class Room
             var hit = HitScan.FirstHit(shooter.X, shooter.Y, angle, targets, ArenaMap.Fixed);
             if (hit != null)
             {
-                _players.Find(p => p.Id == hit.Value)!.Pose = Pose.Down;
+                var target = _players.Find(p => p.Id == hit.Value)!;
+                target.Pose = Pose.Down;
+                target.DownAt = now;
                 messages.Add(new EliminatedMessage(hit.Value));
             }
+
+            // 맞혔거나 마지막 총알을 썼으면 결과가 날 수 있음. 틱을 기다리지 않고 shot·eliminated 바로 뒤에 보냄
+            messages.AddRange(DecideResult(now));
             return messages;
         }
     }
@@ -240,12 +250,39 @@ public class Room
                 }
             }
 
+            // 판 도중 나간 사람은 탈락으로 봄. 발사가 없어 Fire에서 결과를 정하지 못하므로 결투 중이면 틱마다 봄
+            if (_round.Phase == RoundPhase.Duel && _round.Next == null)
+            {
+                messages.AddRange(DecideResult(now));
+            }
+
             // 판이 바뀌어 새로 정한 다음 단계가 있으면 한 번만 알림. 같은 알림을 틱마다 보내지 않음
             // 시드는 걷기가 시작하는 틱에만 쓰여 틱마다 새로 뽑아도 됨. 그래서 판마다 기다리는 시간이 달라짐
             var next = RoundFlow.Advance(_round, now, _players.Count, readyCount, Random.Shared.Next());
             if (next != _round && next.Next != null)
             {
                 messages.Add(new PhaseMessage(next.Next.Value, next.NextAt));
+            }
+
+            // 승리 결과를 다 보여 주면 준비 중으로 돌아가 모두 처음 자리에서 다시 시작함 (기술 설계서 결투장 다시 서기)
+            if (_round.Next == RoundPhase.Lobby && next.Phase == RoundPhase.Lobby)
+            {
+                PlaceAtStart(_players, Revolver.Capacity);
+            }
+
+            // 재대결 카운트다운이 시작하면 재대결하는 사람만 그 인원수로 다시 세우고 장전함. 나머지는 쓰러진 자리에 그대로 둠
+            if (_rematchers != null && _round.Phase != RoundPhase.Countdown && next.Phase == RoundPhase.Countdown)
+            {
+                var rematching = new List<Player>();
+                foreach (var player in _players)
+                {
+                    if (_rematchers.Contains(player.Id))
+                    {
+                        rematching.Add(player);
+                    }
+                }
+                PlaceAtStart(rematching, _rematchRounds);
+                _rematchers = null;
             }
 
             if (_round.Phase != RoundPhase.Walk && next.Phase == RoundPhase.Walk)
@@ -255,6 +292,12 @@ public class Room
                 // 지금 각도에 π를 더하면 안 됨. 준비 중에 돌았을 수 있어 위치로 바깥(중심에서 멀어지는 쪽)을 구함
                 foreach (var player in _players)
                 {
+                    // 쓰러진 사람은 재대결에 끼지 못해 돌지도 걷지도 않음
+                    if (player.Pose == Pose.Down)
+                    {
+                        continue;
+                    }
+
                     // Atan2는 y를 먼저 받고 -π~π를 돌려줌. turn과 같은 0 이상 2π 미만으로 맞춤
                     double outward = Math.Atan2(player.Y - CenterY, player.X - CenterX);
                     if (outward < 0)
@@ -276,6 +319,11 @@ public class Room
                 // 출발할 때 모두 중심에서 R만큼 떨어져 바깥을 봄. 그래서 지금 자리는 바라보는 쪽으로 R + 걸은 거리
                 foreach (var player in _players)
                 {
+                    if (player.Pose == Pose.Down)
+                    {
+                        continue;
+                    }
+
                     double distance = StartPlacement.Radius + walked;
                     player.X = CenterX + Math.Cos(player.Angle) * distance;
                     player.Y = CenterY + Math.Sin(player.Angle) * distance;
@@ -306,6 +354,82 @@ public class Room
         {
             return new List<Func<object, Task>>(_senders.Values);
         }
+    }
+
+    // players를 그 인원수로 시작 배치에 세우고 rounds발을 장전함. 판이 끝나 준비 중으로 돌아갈 때와 재대결 카운트다운에 씀
+    private static void PlaceAtStart(List<Player> players, int rounds)
+    {
+        for (int i = 0; i < players.Count; i++)
+        {
+            var spot = StartPlacement.At(players.Count, i, CenterX, CenterY);
+            var player = players[i];
+            player.X = spot.X;
+            player.Y = spot.Y;
+            player.Angle = spot.Angle;
+            player.Pose = Pose.Stand;
+            player.DownAt = null;
+            player.Ammo = rounds;
+            player.LastShotAt = null;
+        }
+    }
+
+    // 결과가 정해졌으면 판의 다음 단계를 정해 두고 결과와 다음 단계 알림을 돌려줌. 결과가 없으면 빈 목록. lock 안에서 부름
+    private List<object> DecideResult(double now)
+    {
+        // 쓰러지지 않은 사람과 남은 총알, 그리고 가장 늦게 쓰러진 시각을 찾음
+        var alive = new List<(Guid Id, int Ammo)>();
+        double? lastDownAt = null;
+        foreach (var player in _players)
+        {
+            if (player.Pose != Pose.Down)
+            {
+                alive.Add((player.Id, player.Ammo));
+            }
+            else if (lastDownAt == null || player.DownAt > lastDownAt)
+            {
+                lastDownAt = player.DownAt;
+            }
+        }
+
+        // 그 시각에 쓰러진 사람들. 같은 시각에 쓰러졌으면 함께 쓰러진 것임 (M5)
+        var lastDown = new List<Guid>();
+        foreach (var player in _players)
+        {
+            if (player.Pose == Pose.Down && player.DownAt == lastDownAt)
+            {
+                lastDown.Add(player.Id);
+            }
+        }
+
+        var messages = new List<object>();
+        var result = RoundFlow.Result(alive, lastDown);
+        if (result == null)
+        {
+            return messages;
+        }
+
+        // 승리면 준비 중으로, 재대결이면 재대결 카운트다운으로 넘어감
+        var next = RoundPhase.Lobby;
+        if (result.Outcome == Outcome.Win)
+        {
+            // 판이 끝남. 결과를 보는 동안에도 준비 수가 0으로 보이게 지금 풂 (기술 설계서 메시지 ready)
+            foreach (var player in _players)
+            {
+                player.Ready = false;
+            }
+        }
+        else
+        {
+            next = RoundPhase.Countdown;
+            _rematchers = result.PlayerIds;
+            _rematchRounds = result.Rounds;
+        }
+        _round = new Round(RoundPhase.Duel, next, now + RoundFlow.ResultDuration);
+
+        // Step은 판이 바뀐 틱에만 다음 단계를 알리는데, 여기서는 판을 직접 바꿔 Step이 바뀐 것을 모름. 그래서 여기서 알림
+        messages.Add(result);
+        messages.Add(new PhaseMessage(next, _round.NextAt));
+        return messages;
     }
 
     private void ArrangePlayers()

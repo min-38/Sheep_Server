@@ -8,6 +8,12 @@ using SheepServer.Shooting;
 public class RoomTests
 {
     private const double Tolerance = 1e-9;
+
+    // 셋이 다 걸었을 때 a(0번, +x 쪽)에서 b(1번)와 c(2번)를 겨누는 각도, b에서 a를 겨누는 각도.
+    // 셋은 중심에서 같은 거리에 120°씩 떨어져 있어 서로 정삼각형을 이룸
+    private const double AToB = 5 * Math.PI / 6;
+    private const double AToC = 7 * Math.PI / 6;
+    private const double BToA = 11 * Math.PI / 6;
     private static readonly double CenterX = ArenaMap.Fixed.Width / 2.0;
     private static readonly double CenterY = ArenaMap.Fixed.Height / 2.0;
 
@@ -15,6 +21,7 @@ public class RoomTests
     private readonly Guid _a = Guid.NewGuid();
     private readonly Guid _b = Guid.NewGuid();
     private readonly Guid _c = Guid.NewGuid();
+    private readonly Guid _d = Guid.NewGuid();
 
     [Fact]
     public void Step_IncrementsTickNumber()
@@ -264,7 +271,7 @@ public class RoomTests
         Assert.InRange(duelAt, walkEnd + RoundFlow.MinDuelWait, walkEnd + RoundFlow.MaxDuelWait);
         // Lead만큼 앞서 알림. 틱은 50ms마다라 그만큼 늦을 수 있지만 결투 시각보다는 앞섬
         Assert.InRange(announcedAt, duelAt - RoundFlow.Lead, duelAt - RoundFlow.Lead + 50);
-        Assert.Empty(atDuel.OfType<PhaseMessage>()); // 같은 알림을 되풀이하지 않음. 결투 다음은 이후 이슈
+        Assert.Empty(atDuel.OfType<PhaseMessage>()); // 같은 알림을 되풀이하지 않음. 결투 다음은 결과가 정해질 때 알림
     }
 
     [Fact]
@@ -306,7 +313,7 @@ public class RoomTests
         var state = StateAt(1050);
 
         // Assert
-        Assert.True(Find(state, _a).Ready); // 판 도중에는 준비를 풀 수 없음. 판이 끝나면 모두 풂 (이후 이슈)
+        Assert.True(Find(state, _a).Ready); // 판 도중에는 준비를 풀 수 없음. 승리가 정해질 때 모두 풂
     }
 
     [Fact]
@@ -569,21 +576,22 @@ public class RoomTests
     public void Fire_AtOpponent_ShotThenEliminated()
     {
         // Arrange
-        double duelAt = StartDuel();
+        double duelAt = StartDuelWith(_a, _b, _c); // 셋이어야 b가 쓰러져도 결과 없이 결투가 이어짐
 
         // Act
-        var messages = _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120);
+        var messages = _room.Fire(_a, AToB, duelAt + 100, duelAt + 120);
         var state = StateAt(duelAt + 150);
 
         // Assert
-        // 쏜 사람과 각도를 먼저 알리고, 맞은 사람을 그다음에 알림 (기술 설계서 메시지 shot, eliminated)
+        // 쏜 사람과 각도를 먼저 알리고, 맞은 사람을 그다음에 알림 (기술 설계서 메시지 shot, eliminated).
+        // 둘이 남고 둘 다 총알이 있어 결과는 없음
         Assert.Collection(
             messages,
             m =>
             {
                 var shot = Assert.IsType<ShotMessage>(m);
                 Assert.Equal(_a, shot.PlayerId);
-                Assert.Equal(Math.PI, shot.Angle, Tolerance);
+                Assert.Equal(AToB, shot.Angle, Tolerance);
             },
             m => Assert.Equal(_b, Assert.IsType<EliminatedMessage>(m).PlayerId));
         Assert.Equal(Pose.Down, Find(state, _b).Pose);
@@ -662,11 +670,12 @@ public class RoomTests
     public void Fire_ByDownPlayer_Ignored()
     {
         // Arrange
-        double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120); // b가 쓰러짐
+        // 셋이어야 b가 쓰러져도 결투가 이어짐. 둘이면 a가 이겨 결과 뒤의 발사로 버려짐
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, AToB, duelAt + 100, duelAt + 120); // b가 쓰러짐
 
         // Act
-        var messages = _room.Fire(_b, 0, duelAt + 200, duelAt + 220); // 쓰러진 b가 a를 겨눠 쏨
+        var messages = _room.Fire(_b, BToA, duelAt + 200, duelAt + 220); // 쓰러진 b가 a를 겨눠 쏨
         var state = StateAt(duelAt + 250);
 
         // Assert
@@ -678,15 +687,15 @@ public class RoomTests
     public void Fire_AtDownPlayer_NotEliminatedTwice()
     {
         // Arrange
-        double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120); // b가 쓰러짐
+        double duelAt = StartDuelWith(_a, _b, _c); // 셋이어야 b가 쓰러져도 결투가 이어짐
+        _room.Fire(_a, AToB, duelAt + 100, duelAt + 120); // b가 쓰러짐
 
         // Act
         double at = duelAt + 100 + Revolver.FireInterval;
-        var messages = _room.Fire(_a, Math.PI, at, at + 20);
+        var messages = _room.Fire(_a, AToB, at, at + 20);
 
         // Assert
-        // 쓰러진 사람은 다시 맞지 않음. 탈락은 한 판에 한 사람마다 한 번만 보냄 (기술 설계서 메시지 eliminated)
+        // 쓰러진 사람은 다시 맞지 않음. 탈락은 한 결투에 한 사람마다 한 번만 보냄 (기술 설계서 메시지 eliminated)
         Assert.IsType<ShotMessage>(Assert.Single(messages));
     }
 
@@ -725,6 +734,266 @@ public class RoomTests
         Assert.Empty(messages);
     }
 
+    [Fact]
+    public void Fire_LastOpponentDown_ResultWinThenLobbyAnnounced()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double now = duelAt + 120;
+
+        // Act
+        var messages = _room.Fire(_a, Math.PI, duelAt + 100, now);
+
+        // Assert
+        // 결과는 틱을 기다리지 않고 eliminated 바로 뒤에, 준비 중으로 돌아가는 시각은 그 바로 뒤에 감.
+        // 그 시각은 결과를 정한 시각(도착 시각)에 결과 시간을 더한 값 (기술 설계서 메시지 result)
+        Assert.Collection(
+            messages,
+            m => Assert.IsType<ShotMessage>(m),
+            m => Assert.Equal(_b, Assert.IsType<EliminatedMessage>(m).PlayerId),
+            m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Win, [_a], 0),
+            m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.ResultDuration));
+    }
+
+    [Fact]
+    public void Fire_AfterResult_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120); // a가 이김
+
+        // Act
+        double at = duelAt + 100 + Revolver.FireInterval;
+        var messages = _room.Fire(_a, 0, at, at + 20);
+
+        // Assert
+        Assert.Empty(messages); // 결과가 정해진 뒤 다음 단계 시각까지 온 발사는 버림
+    }
+
+    [Fact]
+    public void Fire_Win_EveryoneUnready()
+    {
+        // Arrange
+        double duelAt = StartDuel(); // 둘 다 준비한 채로 판이 돎
+
+        // Act
+        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120);
+        var state = StateAt(duelAt + 150);
+
+        // Assert
+        // 승리가 정해질 때 모두 풂. 결과를 보는 동안에도 준비 수가 0으로 보임 (기술 설계서 메시지 ready)
+        Assert.All(state.Players, p => Assert.False(p.Ready));
+    }
+
+    [Fact]
+    public void SetReady_WhileShowingResult_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        _room.SetReady(_a, true);
+        var state = StateAt(lobbyAt - 50);
+
+        // Assert
+        Assert.False(Find(state, _a).Ready); // 준비 중으로 돌아가기 전에는 버림
+        Assert.True(_room.InRound); // 들어올 수도 없음 (기술 설계서 메시지 joinRoom)
+    }
+
+    [Fact]
+    public void Step_AtLobbyTime_EveryoneBackAtStartPlacementFacingCenter()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        var state = StateAt(lobbyAt);
+
+        // Assert
+        // 쓰러진 b도 일어나 모두 처음 자리에서 서로 마주 봄 (기술 설계서 결투장 다시 서기)
+        Assert.False(_room.InRound);
+        Guid[] ids = [_a, _b];
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var spot = StartPlacement.At(ids.Length, i, CenterX, CenterY);
+            var player = Find(state, ids[i]);
+            AssertStandsAt(spot, player);
+            Assert.Equal(spot.Angle, player.Angle, Tolerance);
+            Assert.Equal(Pose.Stand, player.Pose);
+        }
+    }
+
+    [Fact]
+    public void SetReady_AfterLobby_Applied()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+        _room.Step(lobbyAt);
+
+        // Act
+        _room.SetReady(_b, true);
+        var state = StateAt(lobbyAt + 50);
+
+        // Assert
+        Assert.True(Find(state, _b).Ready);
+    }
+
+    [Fact]
+    public void Step_NewRoundAfterLobby_FullRevolverAgain()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt); // a는 첫 판에 한 발 씀
+        _room.Step(lobbyAt);
+        _room.SetReady(_a, true);
+        _room.SetReady(_b, true);
+        double walkAt = ScheduleWalk(_room, lobbyAt + 50);
+        var (_, secondDuelAt) = StepUntilDuelAnnounced(_room, walkAt);
+        _room.Step(secondDuelAt);
+
+        // Act & Assert
+        // 새 판에는 다시 6발 (컨셉 기획서 규칙). 아무도 안 맞게 바깥으로 쏨
+        for (int i = 0; i < Revolver.Capacity; i++)
+        {
+            double at = secondDuelAt + i * Revolver.FireInterval;
+            Assert.Single(_room.Fire(_a, 0, at, at + 20));
+        }
+        double seventh = secondDuelAt + Revolver.Capacity * Revolver.FireInterval;
+        Assert.Empty(_room.Fire(_a, 0, seventh, seventh + 20));
+    }
+
+    [Fact]
+    public void Fire_EveryoneOutOfAmmo_ResultRematchThenCountdownAnnounced()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        FireAway(_a, 0, Revolver.Capacity, duelAt); // a는 +x 쪽 바깥으로 다 씀
+        FireAway(_b, Math.PI, Revolver.Capacity - 1, duelAt); // b는 -x 쪽 바깥으로 한 발 남기고 씀
+
+        // Act
+        double last = duelAt + (Revolver.Capacity - 1) * Revolver.FireInterval;
+        double now = last + 20;
+        var messages = _room.Fire(_b, Math.PI, last, now);
+
+        // Assert
+        // 둘 다 살았는데 총알이 없으니 재대결, 각자 2발. 재대결 카운트다운은 결과 시간 뒤 (기술 설계서 메시지 result)
+        Assert.Collection(
+            messages,
+            m => Assert.IsType<ShotMessage>(m),
+            m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Rematch, [_a, _b], 2),
+            m => AssertPhase(m, RoundPhase.Countdown, now + RoundFlow.ResultDuration));
+    }
+
+    [Fact]
+    public void Step_RematchCountdown_RematchersBackOnCircleOthersStayDown()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown();
+        var downBefore = Find(StateAt(countdownAt - 50), _c);
+
+        // Act
+        var state = StateAt(countdownAt);
+
+        // Assert
+        // 재대결하는 둘만 그 인원수로 시작 배치에 다시 서서 마주 봄. c는 쓰러진 자리에 그대로 (기술 설계서 결투장 다시 서기)
+        Guid[] rematchers = [_a, _b];
+        for (int i = 0; i < rematchers.Length; i++)
+        {
+            var spot = StartPlacement.At(rematchers.Length, i, CenterX, CenterY);
+            var player = Find(state, rematchers[i]);
+            AssertStandsAt(spot, player);
+            Assert.Equal(spot.Angle, player.Angle, Tolerance);
+            Assert.Equal(Pose.Stand, player.Pose);
+        }
+        var down = Find(state, _c);
+        Assert.Equal(Pose.Down, down.Pose);
+        AssertSamePlace(downBefore, down);
+    }
+
+    [Fact]
+    public void Step_RematchWalk_DownPlayerStaysPut()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown();
+        var downBefore = Find(StateAt(countdownAt), _c);
+        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        _room.Step(walkAt);
+
+        // Act
+        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+
+        // Assert
+        // 걷기는 재대결하는 사람만 함. 쓰러진 c는 돌지도 걷지도 일어서지도 않음
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 2, Find(state, _a));
+        Assert.Equal(Pose.Walk, Find(state, _a).Pose);
+        var down = Find(state, _c);
+        Assert.Equal(Pose.Down, down.Pose);
+        AssertSamePlace(downBefore, down);
+        Assert.Equal(downBefore.Angle, down.Angle, Tolerance);
+    }
+
+    [Fact]
+    public void Fire_InRematch_LoadedWithRounds()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown();
+        _room.Step(countdownAt);
+        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
+        _room.Step(duelAt);
+
+        // Act & Assert
+        // 재대결하는 사람 수(2)만큼만 장전됨 (컨셉 기획서 규칙 재대결 장전). a는 +x 쪽 바깥으로 쏨
+        Assert.Single(_room.Fire(_a, 0, duelAt, duelAt + 20));
+        double second = duelAt + Revolver.FireInterval;
+        Assert.Single(_room.Fire(_a, 0, second, second + 20));
+        double third = duelAt + 2 * Revolver.FireInterval;
+        Assert.Empty(_room.Fire(_a, 0, third, third + 20));
+    }
+
+    [Fact]
+    public void RemovePlayer_InDuelLeavingOneAlive_NextStepAnnouncesWin()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act
+        _room.RemovePlayer(_b);
+        var messages = _room.Step(duelAt + 50);
+        var later = _room.Step(duelAt + 100);
+
+        // Assert
+        // 판 도중 나간 사람은 탈락으로 봄. 발사로 정해진 게 아니라 그다음 틱에 한 번만 알림 (기술 설계서 메시지 result)
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
+        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.ResultDuration);
+        Assert.Empty(later.OfType<ResultMessage>());
+    }
+
+    [Fact]
+    public void RemovePlayer_AllAliveLeave_LatestDownWins()
+    {
+        // Arrange
+        // 넷이 다 걸으면 a는 +x, b는 +y, c는 -x, d는 -y 쪽에 섬. a가 c를, 그다음 d를 맞힘
+        double duelAt = StartDuelWith(_a, _b, _c, _d);
+        _room.Fire(_a, Math.PI, duelAt, duelAt + 20);
+        double second = duelAt + Revolver.FireInterval;
+        _room.Fire(_a, 5 * Math.PI / 4, second, second + 20);
+
+        // Act
+        // 살아 있던 a와 b가 같은 틱 안에 나감
+        _room.RemovePlayer(_a);
+        _room.RemovePlayer(_b);
+        var messages = _room.Step(second + 50);
+
+        // Assert
+        // 남은 사람 중 가장 늦게 쓰러진 d 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 d가 이김
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_d], 0);
+        AssertAnnounces(messages, RoundPhase.Lobby, second + 50 + RoundFlow.ResultDuration);
+    }
+
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
 
     private static void AssertStandsAt((double X, double Y, double Angle) spot, PlayerState player)
@@ -741,17 +1010,31 @@ public class RoomTests
         Assert.Equal(at, message.At, Tolerance);
     }
 
+    private static void AssertPhase(object message, RoundPhase phase, double at)
+    {
+        var announced = Assert.IsType<PhaseMessage>(message);
+        Assert.Equal(phase, announced.Phase);
+        Assert.Equal(at, announced.At, Tolerance);
+    }
+
+    private static void AssertResult(ResultMessage actual, Outcome outcome, Guid[] playerIds, int rounds)
+    {
+        Assert.Equal(outcome, actual.Outcome);
+        Assert.Equal(playerIds, actual.PlayerIds);
+        Assert.Equal(rounds, actual.Rounds);
+    }
+
     private static void AssertSamePlace(PlayerState expected, PlayerState actual)
     {
         Assert.Equal(expected.X, actual.X, Tolerance);
         Assert.Equal(expected.Y, actual.Y, Tolerance);
     }
 
-    // 모두 준비한 방을 카운트다운 시작까지 돌리고, 걷기가 시작하는 시각을 돌려줌. 그 시각의 틱은 부르지 않음
-    private static double ScheduleWalk(Room room)
+    // 모두 준비한 방을 from부터 카운트다운 시작까지 돌리고, 걷기가 시작하는 시각을 돌려줌. 그 시각의 틱은 부르지 않음
+    private static double ScheduleWalk(Room room, double from = 1000)
     {
-        room.Step(1000); // 카운트다운이 정해짐
-        double countdownAt = 1000 + RoundFlow.Lead;
+        room.Step(from); // 카운트다운이 정해짐
+        double countdownAt = from + RoundFlow.Lead;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
         return countdownAt + 3 * RoundFlow.CountdownInterval;
     }
@@ -807,12 +1090,47 @@ public class RoomTests
 
     // 둘을 준비시켜 결투 시각의 틱까지 돌리고 그 시각을 돌려줌.
     // a는 0번 자리(중심의 +x 쪽), b는 1번 자리(중심의 -x 쪽)에서 바깥을 보고 섬. 그래서 a가 π를 보고 쏘면 b가 맞음
-    private double StartDuel()
+    private double StartDuel() => StartDuelWith(_a, _b);
+
+    // 들어온 순서대로 준비시켜 결투 시각의 틱까지 돌리고 그 시각을 돌려줌. i번째 사람은 i번 자리에서 바깥을 보고 섬
+    private double StartDuelWith(params Guid[] ids)
     {
-        AddReady(_a, _b);
+        AddReady(ids);
         double walkAt = ScheduleWalk(_room);
         var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
         _room.Step(duelAt);
         return duelAt;
+    }
+
+    // 둘의 결투에서 a가 b를 맞혀 이기게 하고, 준비 중으로 돌아가는 시각을 돌려줌. 그 시각의 틱은 부르지 않음
+    private double AWins(double duelAt)
+    {
+        double now = duelAt + 120;
+        _room.Fire(_a, Math.PI, duelAt + 100, now);
+        return now + RoundFlow.ResultDuration;
+    }
+
+    // id가 angle 쪽으로 from부터 발사 간격마다 count발을 쏨
+    private void FireAway(Guid id, double angle, int count, double from)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            double at = from + i * Revolver.FireInterval;
+            _room.Fire(id, angle, at, at + 20);
+        }
+    }
+
+    // 셋이 결투해 a가 c를 맞히고, a와 b가 총알을 다 써 둘이 재대결하게 함. 재대결 카운트다운 시각을 돌려주고 그 시각의 틱은 부르지 않음.
+    // 다 걸으면 a는 0번(+x 쪽), b는 1번(2π/3 쪽), c는 2번(4π/3 쪽) 자리에서 바깥을 봄
+    private double RematchAAndBWithCDown()
+    {
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, AToC, duelAt, duelAt + 20); // c가 쓰러짐
+        FireAway(_a, 0, Revolver.Capacity - 1, duelAt + Revolver.FireInterval);
+        FireAway(_b, 2 * Math.PI / 3, Revolver.Capacity - 1, duelAt);
+        double last = duelAt + (Revolver.Capacity - 1) * Revolver.FireInterval;
+        double now = last + 20;
+        _room.Fire(_b, 2 * Math.PI / 3, last, now); // 마지막 한 발로 재대결이 정해짐
+        return now + RoundFlow.ResultDuration;
     }
 }
