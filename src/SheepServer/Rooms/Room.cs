@@ -29,6 +29,12 @@ public class Room
     // 걷기가 시작한 서버 시각(ms). 걷는 중일 때만 값이 있고, 다 걸으면 null
     private double? _walkAt;
 
+    // 이번 결투의 결투 시각("시작!", ms). 걷기가 시작할 때 정함. 이보다 먼저 쐈다는 발사는 버림
+    private double _duelAt;
+
+    // 받았지만 아직 판정하지 않은 발사. 쏜 시각에서 W가 지난 틱에 판정함 (기술 설계서 명중 판정 확정 대기)
+    private readonly List<Shot> _pending = new();
+
     // 재대결이 정해지면 재대결하는 사람과 새로 장전할 총알 수. 재대결 카운트다운이 시작할 때 다시 세우고 비움
     private IReadOnlyList<Guid>? _rematchers;
     private int _rematchRounds;
@@ -173,8 +179,8 @@ public class Room
         }
     }
 
-    // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 순서대로 돌려줌. 버리면 빈 목록 (기술 설계서 메시지 fire).
-    // at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
+    // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 돌려줌. 받으면 shot 하나, 버리면 빈 목록 (기술 설계서 메시지 fire).
+    // 명중은 여기서 정하지 않고 쏜 시각에서 W가 지난 틱(Step)에 정함. at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
     public List<object> Fire(Guid playerId, double angle, double at, double now)
     {
         lock (_lock)
@@ -184,13 +190,22 @@ public class Room
             // 결투 시각의 틱보다 발사가 먼저 올 수 있어 단계만 보지 않고 시각도 봄. 걷기 단계에서는 NextAt이 결투 시각임.
             // 결과가 정해져 다음 단계(Next)가 생기면 그 시각까지 버림
             bool dueling = (_round.Phase == RoundPhase.Duel && _round.Next == null) || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
-            if (!dueling || !double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || !double.IsFinite(at))
+            if (!dueling || !double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || !double.IsFinite(at) || at < _duelAt)
             {
                 return messages;
             }
 
             var shooter = _players.Find(p => p.Id == playerId);
-            if (shooter == null || shooter.Pose == Pose.Down || shooter.Ammo <= 0)
+            if (shooter == null || shooter.Ammo <= 0)
+            {
+                return messages;
+            }
+
+            // 아래 검사와 판정은 자른 쏜 시각으로 함 (기술 설계서 명중 판정 쏜 시각 검사)
+            at = ShotJudge.ClampAt(at, now);
+
+            // 맞았어도 맞은 시각에서 D 안에 쏜 발사는 받음. 서로 맞히면 함께 쓰러짐
+            if (shooter.DownAt != null && at > shooter.DownAt.Value + ShotJudge.MutualWindow)
             {
                 return messages;
             }
@@ -204,30 +219,8 @@ public class Room
             // 받아들인 발사만 총알과 발사 간격을 씀
             shooter.Ammo--;
             shooter.LastShotAt = at;
+            _pending.Add(new Shot(playerId, angle, at));
             messages.Add(new ShotMessage(playerId, angle));
-
-            // 쏜 사람과 이미 쓰러진 사람은 맞지 않음.
-            // ponytail: 도착 순서대로 바로 판정함 (M4). M5에서 쏜 시각 순서 판정, 확정 대기, 함께 쓰러짐으로 바꿈
-            var targets = new List<(Guid Id, double X, double Y)>();
-            foreach (var player in _players)
-            {
-                if (player != shooter && player.Pose != Pose.Down)
-                {
-                    targets.Add((player.Id, player.X, player.Y));
-                }
-            }
-
-            var hit = HitScan.FirstHit(shooter.X, shooter.Y, angle, targets, ArenaMap.Fixed);
-            if (hit != null)
-            {
-                var target = _players.Find(p => p.Id == hit.Value)!;
-                target.Pose = Pose.Down;
-                target.DownAt = now;
-                messages.Add(new EliminatedMessage(hit.Value));
-            }
-
-            // 맞혔거나 마지막 총알을 썼으면 결과가 날 수 있음. 틱을 기다리지 않고 shot·eliminated 바로 뒤에 보냄
-            messages.AddRange(DecideResult(now));
             return messages;
         }
     }
@@ -250,7 +243,10 @@ public class Room
                 }
             }
 
-            // 판 도중 나간 사람은 탈락으로 봄. 발사가 없어 Fire에서 결과를 정하지 못하므로 결투 중이면 틱마다 봄
+            // 쏜 시각에서 W가 지난 발사를 쏜 시각 순서로 판정함. 뒤에 올 발사는 쏜 시각이 지금 - W보다 늦어 이것들보다 앞설 수 없음
+            messages.AddRange(JudgeShots(now));
+
+            // 결과는 틱마다 봄. 판 도중 나간 사람은 탈락으로 봄
             if (_round.Phase == RoundPhase.Duel && _round.Next == null)
             {
                 messages.AddRange(DecideResult(now));
@@ -288,6 +284,7 @@ public class Room
             if (_round.Phase != RoundPhase.Walk && next.Phase == RoundPhase.Walk)
             {
                 _walkAt = _round.NextAt;
+                _duelAt = next.NextAt;
 
                 // 지금 각도에 π를 더하면 안 됨. 준비 중에 돌았을 수 있어 위치로 바깥(중심에서 멀어지는 쪽)을 구함
                 foreach (var player in _players)
@@ -373,10 +370,37 @@ public class Room
         }
     }
 
+    // 판정할 차례가 된 발사를 판정해 맞은 사람을 쓰러뜨리고 탈락 알림을 돌려줌. lock 안에서 부름
+    private List<object> JudgeShots(double now)
+    {
+        var messages = new List<object>();
+        var due = _pending.FindAll(s => s.At + ShotJudge.MaxDelay <= now);
+        if (due.Count == 0)
+        {
+            return messages;
+        }
+        _pending.RemoveAll(s => s.At + ShotJudge.MaxDelay <= now);
+
+        var players = new List<(Guid Id, double X, double Y, double? DownAt)>();
+        foreach (var player in _players)
+        {
+            players.Add((player.Id, player.X, player.Y, player.DownAt));
+        }
+
+        foreach (var (id, at) in ShotJudge.Judge(due, players, ArenaMap.Fixed))
+        {
+            var target = _players.Find(p => p.Id == id)!;
+            target.Pose = Pose.Down;
+            target.DownAt = at;
+            messages.Add(new EliminatedMessage(id));
+        }
+        return messages;
+    }
+
     // 결과가 정해졌으면 판의 다음 단계를 정해 두고 결과와 다음 단계 알림을 돌려줌. 결과가 없으면 빈 목록. lock 안에서 부름
     private List<object> DecideResult(double now)
     {
-        // 쓰러지지 않은 사람과 남은 총알, 그리고 가장 늦게 쓰러진 시각을 찾음
+        // 쓰러지지 않은 사람과 남은 총알, 그리고 가장 늦게 맞은 시각을 찾음
         var alive = new List<(Guid Id, int Ammo)>();
         double? lastDownAt = null;
         foreach (var player in _players)
@@ -391,22 +415,38 @@ public class Room
             }
         }
 
-        // 그 시각에 쓰러진 사람들. 같은 시각에 쓰러졌으면 함께 쓰러진 것임 (M5)
+        var messages = new List<object>();
+
+        // 쓰러진 사람이 맞은 시각에서 D 안에 쏜 발사가 아직 판정되지 않았을 수 있음. W + D가 지나야 정함 (기술 설계서 메시지 result)
+        if (lastDownAt != null && now < lastDownAt.Value + ShotJudge.MaxDelay + ShotJudge.MutualWindow)
+        {
+            return messages;
+        }
+
+        // 둘 이상 남았으면 아직 판정하지 않은 발사가 누군가를 쓰러뜨릴 수 있음. 모두 총알이 없어도 마지막 발사를 판정한 뒤에 정함
+        if (alive.Count >= 2 && _pending.Count > 0)
+        {
+            return messages;
+        }
+
+        // 가장 늦게 맞은 사람과, 그 시각에서 D 안에 맞은 사람들. 함께 쓰러진 것임
         var lastDown = new List<Guid>();
         foreach (var player in _players)
         {
-            if (player.Pose == Pose.Down && player.DownAt == lastDownAt)
+            if (player.Pose == Pose.Down && player.DownAt >= lastDownAt - ShotJudge.MutualWindow)
             {
                 lastDown.Add(player.Id);
             }
         }
 
-        var messages = new List<object>();
         var result = RoundFlow.Result(alive, lastDown);
         if (result == null)
         {
             return messages;
         }
+
+        // 남은 발사는 이긴 사람이 쏜 것이거나 맞고 D가 지난 뒤의 무효 발사뿐이라 맞을 사람이 없음. 다시 선 사람을 맞히지 않게 버림
+        _pending.Clear();
 
         // 승리면 준비 중으로, 재대결이면 재대결 카운트다운으로 넘어감
         var next = RoundPhase.Lobby;

@@ -145,7 +145,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                         && root.TryGetProperty("at", out var atProp) && atProp.ValueKind == JsonValueKind.Number && atProp.TryGetDouble(out double fireAt)
                         && registry.GetRoomById(roomId) is Room room)
                     {
-                        // 틱을 기다리지 않고 바로 방 안 모두(쏜 사람 포함)에게 보냄 (기술 설계서 메시지 shot, eliminated)
+                        // shot은 틱을 기다리지 않고 바로 방 안 모두(쏜 사람 포함)에게 보냄. 명중은 틱에서 정함 (기술 설계서 메시지 shot, eliminated)
                         await Broadcast(room, room.Fire(playerId, fireAngle, fireAt, ServerClock.Now));
                     }
                     return [];
