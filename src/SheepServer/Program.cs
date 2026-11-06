@@ -50,8 +50,30 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         }
     }
 
-    // 받은 메시지 하나를 처리하고 보낼 답들을 순서대로 돌려줌 (기술 설계서 메시지)
-    object[] Handle(string text)
+    // 방 안 모두에게 메시지들을 순서대로 보냄. TickLoop과 같은 방식.
+    // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 쏜 사람의 받기 루프를 늦출 수 있음. TickLoop과 같은 한계이고, 문제가 되면 연결마다 보낼 큐를 둠
+    async Task Broadcast(Room room, List<object> messages)
+    {
+        foreach (var send in room.GetSenders())
+        {
+            try
+            {
+                foreach (var message in messages)
+                {
+                    await send(message);
+                }
+            }
+            // 막 나간 사람의 연결이면 던짐. 그 사람만 건너뛰고 나머지에게는 보냄
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Broadcast failed {ConnectionId}", id);
+            }
+        }
+    }
+
+    // 받은 메시지 하나를 처리하고 보낼 답들을 순서대로 돌려줌 (기술 설계서 메시지).
+    // 발사처럼 방 안 모두에게 가는 것은 여기서 보내고 끝나길 기다림
+    async Task<object[]> Handle(string text)
     {
         JsonDocument doc;
         try
@@ -117,6 +139,17 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
+                case "fire":
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사와 판정은 Room.Fire가 함
+                    if (root.TryGetProperty("angle", out var angleProp) && angleProp.ValueKind == JsonValueKind.Number && angleProp.TryGetDouble(out double fireAngle)
+                        && root.TryGetProperty("at", out var atProp) && atProp.ValueKind == JsonValueKind.Number && atProp.TryGetDouble(out double fireAt)
+                        && registry.GetRoomById(roomId) is Room room)
+                    {
+                        // 틱을 기다리지 않고 바로 방 안 모두(쏜 사람 포함)에게 보냄 (기술 설계서 메시지 shot, eliminated)
+                        await Broadcast(room, room.Fire(playerId, fireAngle, fireAt, ServerClock.Now));
+                    }
+                    return [];
+
                 case "clockSync":
                     // 클라가 보낸 시각을 그대로 돌려줌. 클라가 시각을 찍어 보내는 순간과 서버가 받는 순간 사이에 네트워크 지연이 있음
                     // 1e400 같은 값은 무한대가 돼 답을 JSON으로 만들 때 던지므로 IsFinite까지 봄
@@ -138,7 +171,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     {
         while (await ReceiveText(ws, ct) is string text)
         {
-            foreach (var reply in Handle(text))
+            foreach (var reply in await Handle(text))
             {
                 await SendLocked(reply);
             }
