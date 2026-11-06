@@ -328,20 +328,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
-        string hostId = created.GetProperty("playerId").GetString()!;
-        string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
-        string guestId = joined.GetProperty("playerId").GetString()!;
-        await Send(host, """{"type":"ready","ready":true}""");
-        await Send(guest, """{"type":"ready","ready":true}""");
-
-        // 결투 알림은 준비하고 7~9초 뒤에 옴 (카운트다운 3초, 걷기 3초, 무작위 대기 1~3초)
-        var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromSeconds(15));
-        double duelAt = duel.GetProperty("at").GetDouble();
-        var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
-        double ts = serverTime.GetProperty("ts").GetDouble();
-        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, duelAt - ts) + 20));
+        var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
 
         // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 쏘면 guest가 맞음
         await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, at = duelAt + 10 }));
@@ -357,6 +344,41 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         }
     }
 
+    // 실제 판을 끝까지 돌리고 결과 시간까지 기다리므로 10~12초 걸림
+    [Fact]
+    public async Task Fire_AtLastOpponent_BothGetResultThenNewRoundCanStart()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var (hostId, _, duelAt) = await PlayUntilDuel(host, guest);
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, at = duelAt + 10 }));
+
+        // 둘 다 eliminated 바로 뒤에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
+        double lobbyAt = 0;
+        foreach (var ws in new[] { host, guest })
+        {
+            await ReceiveWhere(ws, m => IsType(m, "eliminated"));
+            var result = await Receive(ws);
+            Assert.Equal("result", result.GetProperty("type").GetString());
+            Assert.Equal("win", result.GetProperty("outcome").GetString());
+            Assert.Equal(new[] { hostId }, result.GetProperty("playerIds").EnumerateArray().Select(id => id.GetString()!));
+            Assert.Equal(0, result.GetProperty("rounds").GetInt32());
+            var lobby = await Receive(ws);
+            Assert.True(IsPhase(lobby));
+            Assert.Equal("lobby", lobby.GetProperty("phase").GetString());
+            lobbyAt = lobby.GetProperty("at").GetDouble();
+        }
+
+        // 준비 중으로 돌아간 틱이 지나면 다시 모두 준비해 새 판을 시작할 수 있음
+        var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
+        double ts = serverTime.GetProperty("ts").GetDouble();
+        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, lobbyAt - ts) + 100));
+        await Send(host, """{"type":"ready","ready":true}""");
+        await Send(guest, """{"type":"ready","ready":true}""");
+        var countdown = await ReceiveWhere(host, IsPhase);
+        Assert.Equal("countdown", countdown.GetProperty("phase").GetString());
+    }
+
     [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {
@@ -366,6 +388,26 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
 
     Task<WebSocket> Connect() =>
         factory.Server.CreateWebSocketClient().ConnectAsync(new Uri(factory.Server.BaseAddress, "ws"), CancellationToken.None);
+
+    // host가 방을 만들고 guest가 들어가 둘 다 준비한 뒤, 결투 시각이 지날 때까지 기다림. 둘의 id와 결투 시각을 돌려줌.
+    // 결투 알림은 준비하고 7~9초 뒤에 옴 (카운트다운 3초, 걷기 3초, 무작위 대기 1~3초)
+    static async Task<(string HostId, string GuestId, double DuelAt)> PlayUntilDuel(WebSocket host, WebSocket guest)
+    {
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+        await Send(host, """{"type":"ready","ready":true}""");
+        await Send(guest, """{"type":"ready","ready":true}""");
+
+        var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromSeconds(15));
+        double duelAt = duel.GetProperty("at").GetDouble();
+        var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
+        double ts = serverTime.GetProperty("ts").GetDouble();
+        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, duelAt - ts) + 20));
+        return (hostId, guestId, duelAt);
+    }
 
     // 메시지 하나를 보내고 답 하나를 받아 JSON으로 돌려줌
     static async Task<JsonElement> Request(WebSocket ws, string json)

@@ -20,8 +20,11 @@ public class Player
     public Pose Pose { get; set; } = Pose.Stand;
     public bool Ready { get; set; }
 
-    // 남은 총알. 처음엔 가득 참. 재대결 장전은 이후 이슈(SHEEP-36)
+    // 남은 총알. 처음엔 가득 참. 재대결 때는 재대결하는 사람 수만큼 다시 장전함
     public int Ammo { get; set; } = Revolver.Capacity;
+
+    // 쓰러진 서버 시각(ms). 서 있으면 null. 아무도 안 남았을 때 가장 늦게(함께) 쓰러진 사람들을 찾는 데 씀
+    public double? DownAt { get; set; }
 
     // 마지막으로 받아들인 발사의 쏜 시각(ms, 서버 시계). 아직 안 쐈으면 null
     public double? LastShotAt { get; set; }
