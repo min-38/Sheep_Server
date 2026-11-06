@@ -16,7 +16,10 @@ var app = builder.Build();
 
 app.UseWebSockets();
 
-app.MapGet("/", () => "Hello World!");
+// 클라 빌드 파일(wwwroot)을 /ws와 같은 주소로 내보냄. 같은 출처라 클라가 '/ws'로 그대로 붙음 (기술 설계서 배포).
+// UseDefaultFiles는 /를 /index.html로 바꾸기만 해서 UseStaticFiles보다 앞에 둠
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Program> logger) =>
 {
