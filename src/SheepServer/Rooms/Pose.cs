@@ -9,5 +9,9 @@ public enum Pose
     Stand,
 
     [JsonStringEnumMemberName("walk")]
-    Walk
+    Walk,
+
+    // 맞으면 판이 끝날 때까지 이 동작임
+    [JsonStringEnumMemberName("down")]
+    Down
 }

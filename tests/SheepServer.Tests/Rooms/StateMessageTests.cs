@@ -8,6 +8,7 @@ public class StateMessageTests
     [Theory]
     [InlineData(Pose.Stand, "stand")]
     [InlineData(Pose.Walk, "walk")]
+    [InlineData(Pose.Down, "down")]
     public void Serialize_PoseUsesMessageTableNames(Pose pose, string name)
     {
         // Arrange

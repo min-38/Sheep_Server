@@ -3,6 +3,7 @@ namespace SheepServer.Tests.Rooms;
 using SheepServer.Arena;
 using SheepServer.Rooms;
 using SheepServer.Rounds;
+using SheepServer.Shooting;
 
 public class RoomTests
 {
@@ -518,6 +519,212 @@ public class RoomTests
         AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a)); // 돌아도 자리는 그대로 (기술 설계서 명중 판정: 결투 중에는 아무도 걷지 않음)
     }
 
+    [Fact]
+    public void Fire_InLobby_Ignored()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+
+        // Act
+        var messages = _room.Fire(_a, Math.PI, 0, 0);
+
+        // Assert
+        Assert.Empty(messages); // 결투 단계가 아니면 버림 (기술 설계서 메시지 fire)
+    }
+
+    [Fact]
+    public void Fire_BeforeDuel_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
+
+        // Act
+        var messages = _room.Fire(_a, Math.PI, duelAt - 1, duelAt - 1);
+
+        // Assert
+        Assert.Empty(messages); // 다 걷고 "시작!"을 기다리는 동안 쏘면 버림
+    }
+
+    [Fact]
+    public void Fire_AfterDuelTimeBeforeTick_Accepted()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
+
+        // Act
+        // 결투 시각은 지났지만 그 시각의 틱은 아직 돌지 않음. 클라는 자기 시계로 "시작!"을 보고 쏘므로 틱보다 먼저 올 수 있음
+        var messages = _room.Fire(_a, Math.PI, duelAt, duelAt + 10);
+
+        // Assert
+        Assert.NotEmpty(messages);
+        Assert.IsType<ShotMessage>(messages[0]);
+    }
+
+    [Fact]
+    public void Fire_AtOpponent_ShotThenEliminated()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act
+        var messages = _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120);
+        var state = StateAt(duelAt + 150);
+
+        // Assert
+        // 쏜 사람과 각도를 먼저 알리고, 맞은 사람을 그다음에 알림 (기술 설계서 메시지 shot, eliminated)
+        Assert.Collection(
+            messages,
+            m =>
+            {
+                var shot = Assert.IsType<ShotMessage>(m);
+                Assert.Equal(_a, shot.PlayerId);
+                Assert.Equal(Math.PI, shot.Angle, Tolerance);
+            },
+            m => Assert.Equal(_b, Assert.IsType<EliminatedMessage>(m).PlayerId));
+        Assert.Equal(Pose.Down, Find(state, _b).Pose);
+        Assert.Equal(Pose.Stand, Find(state, _a).Pose);
+    }
+
+    [Fact]
+    public void Fire_AwayFromEveryone_ShotOnly()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act
+        // a는 바깥을 보고 섬. 그대로 쏘면 벽에 맞음. 광선이 a의 원 안에서 출발해도 a 자신은 맞지 않음
+        var messages = _room.Fire(_a, 0, duelAt + 100, duelAt + 120);
+        var state = StateAt(duelAt + 150);
+
+        // Assert
+        var shot = Assert.IsType<ShotMessage>(Assert.Single(messages));
+        Assert.Equal(_a, shot.PlayerId);
+        Assert.All(state.Players, p => Assert.Equal(Pose.Stand, p.Pose));
+    }
+
+    [Fact]
+    public void Fire_SeventhShot_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act & Assert
+        // 컨셉 기획서 규칙: 리볼버 6발, 재장전 없음. 아무도 안 맞게 바깥으로 쏨
+        for (int i = 0; i < 6; i++)
+        {
+            double at = duelAt + i * Revolver.FireInterval;
+            Assert.Single(_room.Fire(_a, 0, at, at + 20));
+        }
+        double seventh = duelAt + 6 * Revolver.FireInterval;
+        Assert.Empty(_room.Fire(_a, 0, seventh, seventh + 20));
+    }
+
+    [Fact]
+    public void Fire_FasterThanInterval_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, 0, duelAt, duelAt + 20);
+
+        // Act
+        // 둘 다 첫 발보다 480ms 늦게 도착함. 발사 간격은 도착 시각이 아니라 쏜 시각(at)끼리 재므로 첫 번째만 버림
+        var tooSoon = _room.Fire(_a, 0, duelAt + Revolver.FireInterval - 1, duelAt + 500);
+        var onTime = _room.Fire(_a, 0, duelAt + Revolver.FireInterval, duelAt + 500);
+
+        // Assert
+        Assert.Empty(tooSoon);
+        Assert.Single(onTime);
+    }
+
+    [Fact]
+    public void Fire_IgnoredShot_DoesNotStartInterval()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
+        _room.Fire(_a, 0, duelAt - 1, duelAt - 1); // "시작!" 전이라 버림
+        _room.Step(duelAt);
+
+        // Act
+        var messages = _room.Fire(_a, 0, duelAt, duelAt + 20);
+
+        // Assert
+        Assert.Single(messages); // 버린 발사는 총알도 발사 간격도 쓰지 않음. 쓰면 클라가 센 탄 수와 어긋남
+    }
+
+    [Fact]
+    public void Fire_ByDownPlayer_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120); // b가 쓰러짐
+
+        // Act
+        var messages = _room.Fire(_b, 0, duelAt + 200, duelAt + 220); // 쓰러진 b가 a를 겨눠 쏨
+        var state = StateAt(duelAt + 250);
+
+        // Assert
+        Assert.Empty(messages);
+        Assert.Equal(Pose.Stand, Find(state, _a).Pose);
+    }
+
+    [Fact]
+    public void Fire_AtDownPlayer_NotEliminatedTwice()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, duelAt + 100, duelAt + 120); // b가 쓰러짐
+
+        // Act
+        double at = duelAt + 100 + Revolver.FireInterval;
+        var messages = _room.Fire(_a, Math.PI, at, at + 20);
+
+        // Assert
+        // 쓰러진 사람은 다시 맞지 않음. 탈락은 한 판에 한 사람마다 한 번만 보냄 (기술 설계서 메시지 eliminated)
+        Assert.IsType<ShotMessage>(Assert.Single(messages));
+    }
+
+    // 기술 설계서 메시지 fire: angle은 turn과 같은 범위, at은 숫자. 아니면 버림
+    [Theory]
+    [InlineData(-0.1, 100)]
+    [InlineData(2 * Math.PI, 100)]
+    [InlineData(double.NaN, 100)]
+    [InlineData(double.PositiveInfinity, 100)]
+    [InlineData(Math.PI, double.NaN)]
+    [InlineData(Math.PI, double.PositiveInfinity)]
+    public void Fire_AngleOrShotTimeInvalid_Ignored(double angle, double afterDuel)
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act
+        var messages = _room.Fire(_a, angle, duelAt + afterDuel, duelAt + 120);
+        var state = StateAt(duelAt + 150);
+
+        // Assert
+        Assert.Empty(messages);
+        Assert.Equal(Pose.Stand, Find(state, _b).Pose);
+    }
+
+    [Fact]
+    public void Fire_PlayerNotInRoom_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+
+        // Act
+        var messages = _room.Fire(_c, Math.PI, duelAt + 100, duelAt + 120);
+
+        // Assert
+        Assert.Empty(messages);
+    }
+
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
 
     private static void AssertStandsAt((double X, double Y, double Angle) spot, PlayerState player)
@@ -596,5 +803,16 @@ public class RoomTests
             _room.AddPlayer(id);
             _room.SetReady(id, true);
         }
+    }
+
+    // 둘을 준비시켜 결투 시각의 틱까지 돌리고 그 시각을 돌려줌.
+    // a는 0번 자리(중심의 +x 쪽), b는 1번 자리(중심의 -x 쪽)에서 바깥을 보고 섬. 그래서 a가 π를 보고 쏘면 b가 맞음
+    private double StartDuel()
+    {
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
+        _room.Step(duelAt);
+        return duelAt;
     }
 }

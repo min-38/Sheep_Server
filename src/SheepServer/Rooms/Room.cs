@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using SheepServer.Arena;
 using SheepServer.Rounds;
+using SheepServer.Shooting;
 
 namespace SheepServer.Rooms;
 
@@ -165,6 +166,59 @@ public class Room
             {
                 player.Ready = ready;
             }
+        }
+    }
+
+    // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 순서대로 돌려줌. 버리면 빈 목록 (기술 설계서 메시지 fire).
+    // at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
+    public List<object> Fire(Guid playerId, double angle, double at, double now)
+    {
+        lock (_lock)
+        {
+            var messages = new List<object>();
+
+            // 결투 시각의 틱보다 발사가 먼저 올 수 있어 단계만 보지 않고 시각도 봄. 걷기 단계에서는 NextAt이 결투 시각임
+            bool dueling = _round.Phase == RoundPhase.Duel || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
+            if (!dueling || !double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || !double.IsFinite(at))
+            {
+                return messages;
+            }
+
+            var shooter = _players.Find(p => p.Id == playerId);
+            if (shooter == null || shooter.Pose == Pose.Down || shooter.Ammo <= 0)
+            {
+                return messages;
+            }
+
+            // 발사 간격은 도착 시각이 아니라 쏜 시각끼리 잼. 도착 간격은 지연에 따라 흔들려 클라가 센 탄 수와 어긋남
+            if (shooter.LastShotAt != null && at - shooter.LastShotAt.Value < Revolver.FireInterval)
+            {
+                return messages;
+            }
+
+            // 받아들인 발사만 총알과 발사 간격을 씀
+            shooter.Ammo--;
+            shooter.LastShotAt = at;
+            messages.Add(new ShotMessage(playerId, angle));
+
+            // 쏜 사람과 이미 쓰러진 사람은 맞지 않음.
+            // ponytail: 도착 순서대로 바로 판정함 (M4). M5에서 쏜 시각 순서 판정, 확정 대기, 함께 쓰러짐으로 바꿈
+            var targets = new List<(Guid Id, double X, double Y)>();
+            foreach (var player in _players)
+            {
+                if (player != shooter && player.Pose != Pose.Down)
+                {
+                    targets.Add((player.Id, player.X, player.Y));
+                }
+            }
+
+            var hit = HitScan.FirstHit(shooter.X, shooter.Y, angle, targets, ArenaMap.Fixed);
+            if (hit != null)
+            {
+                _players.Find(p => p.Id == hit.Value)!.Pose = Pose.Down;
+                messages.Add(new EliminatedMessage(hit.Value));
+            }
+            return messages;
         }
     }
 

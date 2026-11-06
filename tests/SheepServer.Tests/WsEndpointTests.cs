@@ -306,6 +306,58 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task Fire_NotANumber_IgnoredAndConnectionKeepsWorking()
+    {
+        using var ws = await Connect();
+        await Request(ws, """{"type":"createRoom"}""");
+
+        // 숫자가 아닌 각도나 시각, 빠진 필드는 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
+        await Send(ws, """{"type":"fire","angle":"1","at":100}""");
+        await Send(ws, """{"type":"fire","angle":1,"at":"100"}""");
+        await Send(ws, """{"type":"fire"}""");
+        await Send(ws, """{"type":"clockSync","t0":7}""");
+
+        // 방을 만든 뒤에 오는 map은 건너뜀
+        var reply = await ReceiveWhere(ws, m => IsType(m, "serverTime"));
+        Assert.Equal(7, reply.GetProperty("t0").GetDouble());
+    }
+
+    // 실제 판을 끝까지 돌려 "시작!"을 기다리므로 7~9초 걸림
+    [Fact]
+    public async Task Fire_AtOpponentAfterDuel_BothGetShotThenEliminated()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom"}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+        await Send(host, """{"type":"ready","ready":true}""");
+        await Send(guest, """{"type":"ready","ready":true}""");
+
+        // 결투 알림은 준비하고 7~9초 뒤에 옴 (카운트다운 3초, 걷기 3초, 무작위 대기 1~3초)
+        var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromSeconds(15));
+        double duelAt = duel.GetProperty("at").GetDouble();
+        var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
+        double ts = serverTime.GetProperty("ts").GetDouble();
+        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, duelAt - ts) + 20));
+
+        // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 쏘면 guest가 맞음
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, at = duelAt + 10 }));
+
+        // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated)
+        foreach (var ws in new[] { host, guest })
+        {
+            var shot = await ReceiveWhere(ws, m => IsType(m, "shot"));
+            Assert.Equal(hostId, shot.GetProperty("playerId").GetString());
+            Assert.Equal(Math.PI, shot.GetProperty("angle").GetDouble(), 1e-9);
+            var eliminated = await ReceiveWhere(ws, m => IsType(m, "eliminated"));
+            Assert.Equal(guestId, eliminated.GetProperty("playerId").GetString());
+        }
+    }
+
+    [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {
         var res = await factory.CreateClient().GetAsync("/ws");
@@ -329,10 +381,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     static Task<JsonElement> Receive(WebSocket ws) => ReceiveWhere(ws, m => !IsState(m));
 
     // 조건에 맞는 메시지가 올 때까지 받고 나머지는 버림
-    static async Task<JsonElement> ReceiveWhere(WebSocket ws, Func<JsonElement, bool> match)
+    static async Task<JsonElement> ReceiveWhere(WebSocket ws, Func<JsonElement, bool> match, TimeSpan? wait = null)
     {
-        // 서버가 안 보내면 영원히 기다리지 않고 5초 뒤 실패함. state가 계속 와도 5초는 늘어나지 않음
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        // 서버가 안 보내면 영원히 기다리지 않고 5초(판을 기다리는 테스트는 wait) 뒤 실패함. state가 계속 와도 늘어나지 않음
+        using var timeout = new CancellationTokenSource(wait ?? TimeSpan.FromSeconds(5));
         while (true)
         {
             var message = await ReceiveOne(ws, timeout.Token);
@@ -364,6 +416,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     static bool IsState(JsonElement m) => m.GetProperty("type").GetString() == "state";
 
     static bool IsPhase(JsonElement m) => m.GetProperty("type").GetString() == "phase";
+
+    static bool IsType(JsonElement m, string type) => m.GetProperty("type").GetString() == type;
 
     // state에서 id가 같은 플레이어의 각도. 없으면 null
     static double? AngleOf(JsonElement state, string id)
