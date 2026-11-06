@@ -235,18 +235,62 @@ public class RoomTests
         _room.Step(1000);
         double countdownAt = 1000 + RoundFlow.Lead;
         double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
-        double duelAt = walkAt + RoundFlow.WalkDuration;
 
         // Act
         var atCountdown = _room.Step(countdownAt);
         var atWalk = _room.Step(walkAt);
+
+        // Assert
+        // 걷기는 카운트다운이 시작할 때 알림 (기술 설계서 메시지 phase)
+        AssertAnnounces(atCountdown, RoundPhase.Walk, walkAt);
+        Assert.Empty(atWalk.OfType<PhaseMessage>()); // 결투 시각은 이때 정하지만 Lead 전에야 알림
+    }
+
+    [Fact]
+    public void Step_DuelAnnouncedOnceLeadBeforeRandomTime()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        double walkEnd = walkAt + RoundFlow.WalkDuration;
+
+        // Act
+        var (announcedAt, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
         var atDuel = _room.Step(duelAt);
 
         // Assert
-        // 다음 단계는 앞 단계가 시작할 때 알림 (기술 설계서 메시지 phase)
-        AssertAnnounces(atCountdown, RoundPhase.Walk, walkAt);
-        AssertAnnounces(atWalk, RoundPhase.Duel, duelAt);
-        Assert.Empty(atDuel.OfType<PhaseMessage>()); // 결투 다음은 이후 이슈
+        // 걷기가 끝나고 무작위로 기다린 뒤 (컨셉 기획서 규칙 "시작!" 타이밍)
+        Assert.InRange(duelAt, walkEnd + RoundFlow.MinDuelWait, walkEnd + RoundFlow.MaxDuelWait);
+        // Lead만큼 앞서 알림. 틱은 50ms마다라 그만큼 늦을 수 있지만 결투 시각보다는 앞섬
+        Assert.InRange(announcedAt, duelAt - RoundFlow.Lead, duelAt - RoundFlow.Lead + 50);
+        Assert.Empty(atDuel.OfType<PhaseMessage>()); // 같은 알림을 되풀이하지 않음. 결투 다음은 이후 이슈
+    }
+
+    [Fact]
+    public void Step_TenRooms_DuelTimesVary()
+    {
+        // Arrange
+        var waits = new HashSet<double>();
+
+        for (int i = 0; i < 10; i++)
+        {
+            var room = new Room($"Room{i}", 2);
+            var a = Guid.NewGuid();
+            var b = Guid.NewGuid();
+            room.AddPlayer(a);
+            room.AddPlayer(b);
+            room.SetReady(a, true);
+            room.SetReady(b, true);
+            double walkAt = ScheduleWalk(room);
+
+            // Act
+            var (_, duelAt) = StepUntilDuelAnnounced(room, walkAt);
+            waits.Add(duelAt - walkAt);
+        }
+
+        // Assert
+        // 판마다 같은 시드를 쓰면 대기 시간이 늘 같아 타이밍을 외울 수 있음
+        Assert.True(waits.Count > 1, "열 판의 결투 시각이 모두 걷기 시각에서 같은 만큼 떨어짐");
     }
 
     [Fact]
@@ -359,12 +403,12 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double duelAt = walkAt + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.WalkDuration;
         _room.Step(walkAt);
 
         // Act
-        var atEnd = StateAt(duelAt); // 걷기가 끝나는 틱. 판은 이 틱에 결투로 넘어감
-        var later = StateAt(duelAt + 1000);
+        var atEnd = StateAt(walkEnd); // 걷기가 끝나는 틱. 결투까지는 서서 무작위로 더 기다림
+        var later = StateAt(walkEnd + 1000);
 
         // Assert
         AssertWalked(2, 0, RoundFlow.WalkDistance, Find(atEnd, _a));
@@ -422,13 +466,47 @@ public class RoomTests
     }
 
     [Fact]
-    public void SetAngle_AfterWalk_Applied()
+    public void SetAngle_DuringCountdown_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        _room.Step(1000); // 카운트다운이 정해짐
+        var before = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+
+        // Act
+        _room.SetAngle(_a, 1.0);
+        var state = StateAt(1000 + RoundFlow.Lead + 50);
+
+        // Assert
+        // "시작!" 전에 온 돌기는 버림 (기술 설계서 메시지 turn). 클라도 카운트다운부터 입력을 잠금
+        Assert.Equal(Find(before, _a).Angle, Find(state, _a).Angle, Tolerance);
+    }
+
+    [Fact]
+    public void SetAngle_WalkedButBeforeDuel_Ignored()
     {
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double duelAt = walkAt + RoundFlow.WalkDuration;
-        _room.Step(walkAt);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt); // 다 걸었고 결투 알림도 받음
+
+        // Act
+        _room.SetAngle(_a, 1.0);
+        var state = StateAt(duelAt - 1);
+
+        // Assert
+        // 걷기가 끝나도 "시작!" 전이면 버림. 받으면 신호 전에 미리 돌아 겨눌 수 있음
+        AssertFacesOutward(Find(state, _a));
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
+    }
+
+    [Fact]
+    public void SetAngle_AtDuel_Applied()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
         _room.Step(duelAt);
 
         // Act
@@ -436,7 +514,7 @@ public class RoomTests
         var state = StateAt(duelAt + 50);
 
         // Assert
-        Assert.Equal(1.0, Find(state, _a).Angle, Tolerance); // 걷기가 끝나면 다시 돌아 겨눌 수 있음
+        Assert.Equal(1.0, Find(state, _a).Angle, Tolerance); // "시작!"부터 다시 돌아 겨눌 수 있음
         AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a)); // 돌아도 자리는 그대로 (기술 설계서 명중 판정: 결투 중에는 아무도 걷지 않음)
     }
 
@@ -469,6 +547,23 @@ public class RoomTests
         double countdownAt = 1000 + RoundFlow.Lead;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
         return countdownAt + 3 * RoundFlow.CountdownInterval;
+    }
+
+    // 걷기 시각부터 50ms마다 틱을 돌려 결투 알림을 찾음. 알린 틱의 시각과 알린 결투 시각을 돌려줌
+    private static (double AnnouncedAt, double DuelAt) StepUntilDuelAnnounced(Room room, double walkAt)
+    {
+        for (double now = walkAt; now <= walkAt + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
+        {
+            var phase = room.Step(now).OfType<PhaseMessage>().SingleOrDefault();
+            if (phase != null)
+            {
+                Assert.Equal(RoundPhase.Duel, phase.Phase);
+                return (now, phase.At);
+            }
+        }
+
+        Assert.Fail("가장 늦은 결투 시각까지 결투 알림이 오지 않음");
+        return default;
     }
 
     // count명 중 index번이 시작 자리에서 바깥으로 walked칸 걸어간 자리에 있는지 봄.
