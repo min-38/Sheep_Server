@@ -4,6 +4,9 @@ using SheepServer.Rounds;
 
 public class RoundFlowTests
 {
+    // 시드는 걷기가 시작할 때 무작위 대기를 정하는 데만 쓰임. 다른 단계에서는 결과에 영향이 없음
+    private const int Seed = 7;
+
     // 3, 2, 1을 카운트다운 간격마다 보여 주므로 카운트다운은 간격의 3배 (시스템 기획서 판 흐름 시간)
     private static readonly double CountdownDuration = 3 * RoundFlow.CountdownInterval;
     private static readonly Round Lobby = new(RoundPhase.Lobby, null, 0);
@@ -14,7 +17,7 @@ public class RoundFlowTests
     public void Advance_AllReady_SchedulesCountdownAfterLead(int players)
     {
         // Act
-        var round = RoundFlow.Advance(Lobby, 1000, players, players);
+        var round = RoundFlow.Advance(Lobby, 1000, players, players, Seed);
 
         // Assert
         // 카운트다운은 바로 시작하지 않음. 지연이 큰 사람도 시작 전에 알림을 받도록 Lead 뒤로 잡음
@@ -30,7 +33,7 @@ public class RoundFlowTests
     public void Advance_AloneOrSomeoneNotReady_StaysInLobby(int players, int ready)
     {
         // Act
-        var round = RoundFlow.Advance(Lobby, 1000, players, ready);
+        var round = RoundFlow.Advance(Lobby, 1000, players, ready, Seed);
 
         // Assert
         Assert.Equal(Lobby, round);
@@ -43,7 +46,7 @@ public class RoundFlowTests
         var scheduled = new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500);
 
         // Act
-        var round = RoundFlow.Advance(scheduled, 1499.9, 2, 2);
+        var round = RoundFlow.Advance(scheduled, 1499.9, 2, 2, Seed);
 
         // Assert
         Assert.Equal(scheduled, round);
@@ -53,27 +56,65 @@ public class RoundFlowTests
     public void Advance_AtCountdownTime_EntersCountdownAndSchedulesWalk()
     {
         // Act
-        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, 2, 2);
+        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, 2, 2, Seed);
 
         // Assert
         Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
     }
 
     [Fact]
-    public void Advance_AtWalkTime_EntersWalkAndSchedulesDuel()
+    public void Advance_AtWalkTime_DecidesDuelTimeButDoesNotAnnounceYet()
     {
         // Act
-        var round = RoundFlow.Advance(new Round(RoundPhase.Countdown, RoundPhase.Walk, 4500), 4500, 2, 2);
+        var round = RoundFlow.Advance(new Round(RoundPhase.Countdown, RoundPhase.Walk, 4500), 4500, 2, 2, Seed);
 
         // Assert
-        Assert.Equal(new Round(RoundPhase.Walk, RoundPhase.Duel, 4500 + RoundFlow.WalkDuration), round);
+        // 결투 시각은 걷기가 끝난 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
+        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
+    }
+
+    [Fact]
+    public void Advance_WaitingForDuelBeforeLead_Unchanged()
+    {
+        // Arrange
+        var waiting = new Round(RoundPhase.Walk, null, 10_000);
+
+        // Act
+        var round = RoundFlow.Advance(waiting, 10_000 - RoundFlow.Lead - 0.1, 2, 2, Seed);
+
+        // Assert
+        Assert.Equal(waiting, round);
+    }
+
+    [Fact]
+    public void Advance_LeadBeforeDuel_AnnouncesDuel()
+    {
+        // Act
+        var round = RoundFlow.Advance(new Round(RoundPhase.Walk, null, 10_000), 10_000 - RoundFlow.Lead, 2, 2, Seed);
+
+        // Assert
+        // 카운트다운처럼 Lead만큼 앞서 알림. 시각은 걷기가 시작할 때 정한 그대로임
+        Assert.Equal(new Round(RoundPhase.Walk, RoundPhase.Duel, 10_000), round);
+    }
+
+    [Fact]
+    public void Advance_WaitingForDuelWithEveryoneReady_DoesNotStartAgain()
+    {
+        // Arrange
+        var waiting = new Round(RoundPhase.Walk, null, 10_000);
+
+        // Act
+        var round = RoundFlow.Advance(waiting, 5000, 2, 2, Seed);
+
+        // Assert
+        Assert.Equal(waiting, round); // Next가 비어 있어도 판 도중임. 모두 준비했는지는 준비 중에만 봄
     }
 
     [Fact]
     public void Advance_AtDuelTime_EntersDuelWithNothingNext()
     {
         // Act
-        var round = RoundFlow.Advance(new Round(RoundPhase.Walk, RoundPhase.Duel, 7500), 7500, 2, 2);
+        var round = RoundFlow.Advance(new Round(RoundPhase.Walk, RoundPhase.Duel, 7500), 7500, 2, 2, Seed);
 
         // Assert
         Assert.Equal(RoundPhase.Duel, round.Phase);
@@ -87,7 +128,7 @@ public class RoundFlowTests
         var duel = new Round(RoundPhase.Duel, null, 0);
 
         // Act
-        var round = RoundFlow.Advance(duel, 100_000, 2, 2);
+        var round = RoundFlow.Advance(duel, 100_000, 2, 2, Seed);
 
         // Assert
         Assert.Equal(duel, round); // 모두 준비했는지는 준비 중에만 봄
@@ -98,7 +139,7 @@ public class RoundFlowTests
     {
         // Act
         // 틱은 50ms마다라 정한 시각보다 늦게 옴. 늦게 온 틱을 기준으로 다음 시각을 잡으면 알린 시각과 어긋남
-        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1540, 2, 2);
+        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1540, 2, 2, Seed);
 
         // Assert
         Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
@@ -111,9 +152,48 @@ public class RoundFlowTests
     {
         // Act
         // 판이 정해진 뒤에는 인원과 준비를 보지 않음. 나간 사람은 판에서 빠질 뿐임
-        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, players, ready);
+        var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, players, ready, Seed);
 
         // Assert
         Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
+    }
+
+    [Fact]
+    public void DuelWait_SameSeed_SameWait()
+    {
+        // Act
+        double first = RoundFlow.DuelWait(42);
+        double second = RoundFlow.DuelWait(42);
+
+        // Assert
+        Assert.Equal(first, second); // 시드를 고정하면 테스트에서 결투 시각을 미리 알 수 있음
+    }
+
+    [Fact]
+    public void DuelWait_AnySeed_WithinRange()
+    {
+        for (int seed = 0; seed < 1000; seed++)
+        {
+            // Act
+            double wait = RoundFlow.DuelWait(seed);
+
+            // Assert
+            Assert.InRange(wait, RoundFlow.MinDuelWait, RoundFlow.MaxDuelWait); // 시스템 기획서 판 흐름 시간
+        }
+    }
+
+    [Fact]
+    public void DuelWait_DifferentSeeds_Vary()
+    {
+        // Act
+        var waits = new HashSet<double>();
+        for (int seed = 0; seed < 100; seed++)
+        {
+            waits.Add(RoundFlow.DuelWait(seed));
+        }
+
+        // Assert
+        // 늘 같은 값이면 타이밍을 외워 미리 반응할 수 있음 (컨셉 기획서 규칙 "시작!" 타이밍)
+        Assert.True(waits.Count > 1, "시드가 달라도 대기 시간이 모두 같음");
     }
 }

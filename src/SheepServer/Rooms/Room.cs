@@ -136,8 +136,8 @@ public class Room
         lock (_lock)
         {
             // 클라가 보낸 값이라 던지면 연결이 끊김. 범위 밖이나 없는 사람은 조용히 버림 (기술 설계서 메시지 turn).
-            // 걷는 동안에는 서버가 방향을 정해서 버림
-            if (!double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || _round.Phase == RoundPhase.Walk)
+            // 카운트다운부터 "시작!" 전까지도 버림. 걷기 단계는 다 걷고 결투를 기다리는 동안까지 이어짐
+            if (!double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || _round.Phase is RoundPhase.Countdown or RoundPhase.Walk)
             {
                 return;
             }
@@ -187,7 +187,8 @@ public class Room
             }
 
             // 판이 바뀌어 새로 정한 다음 단계가 있으면 한 번만 알림. 같은 알림을 틱마다 보내지 않음
-            var next = RoundFlow.Advance(_round, now, _players.Count, readyCount);
+            // 시드는 걷기가 시작하는 틱에만 쓰여 틱마다 새로 뽑아도 됨. 그래서 판마다 기다리는 시간이 달라짐
+            var next = RoundFlow.Advance(_round, now, _players.Count, readyCount, Random.Shared.Next());
             if (next != _round && next.Next != null)
             {
                 messages.Add(new PhaseMessage(next.Next.Value, next.NextAt));
