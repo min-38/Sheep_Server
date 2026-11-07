@@ -5,11 +5,17 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using SheepServer.Arena;
 using SheepServer.Rounds;
+using SheepServer.Shooting;
 
 namespace SheepServer.Tests;
 
 public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
 {
+    // 다 걸은 둘은 중심을 사이에 두고 2(R + 걸은 거리) 떨어짐. 그 거리에서 머리 가운데를 겨누는 위아래 각도.
+    // 몸은 반샷이라 한 발에 쓰러뜨리려면 머리를 쏨 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
+    private static readonly double HeadAcross =
+        Math.Atan(((HitScan.BodyTop + HitScan.HeadTop) / 2 - HitScan.EyeHeight) / (2 * (StartPlacement.Radius + RoundFlow.WalkDistance) - HitScan.HeadRadius));
+
     [Fact]
     public async Task CreateRoom_ThenOtherPlayerJoinsWithCode()
     {
@@ -332,8 +338,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var guest = await Connect();
         var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
 
-        // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 쏘면 guest가 맞음
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = 0.0, at = duelAt + 10 }));
+        // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 머리 높이로 쏘면 guest가 쓰러짐
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
 
         // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated).
         // 그 사이에 쏜 사람만 shotResult를 받음. 맞은 사람은 누가 어디를 맞혔는지 받지 않음
@@ -346,7 +352,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (ws == host)
             {
                 Assert.Equal("shotResult", next.GetProperty("type").GetString());
-                Assert.Equal("body", next.GetProperty("zone").GetString());
+                Assert.Equal("head", next.GetProperty("zone").GetString());
                 Assert.True(next.GetProperty("down").GetBoolean());
                 next = await Receive(ws);
             }
@@ -362,7 +368,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
         var (hostId, _, duelAt) = await PlayUntilDuel(host, guest);
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = 0.0, at = duelAt + 10 }));
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
 
         // 둘 다 eliminated를 받고, W + D가 지난 틱에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
         double lobbyAt = 0;

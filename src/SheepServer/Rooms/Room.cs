@@ -267,10 +267,15 @@ public class Room
                 messages.Add(new PhaseMessage(next.Next.Value, next.NextAt));
             }
 
-            // 승리 결과를 다 보여 주면 준비 중으로 돌아가 모두 처음 자리에서 다시 시작함 (기술 설계서 결투장 다시 서기)
+            // 승리 결과를 다 보여 주면 준비 중으로 돌아가 모두 처음 자리에서 다시 시작함 (기술 설계서 결투장 다시 서기).
+            // 판이 끝났으므로 반샷도 모두 지움 (컨셉 기획서 규칙)
             if (_round.Next == RoundPhase.Lobby && next.Phase == RoundPhase.Lobby)
             {
                 PlaceAtStart(_players, Revolver.Capacity);
+                foreach (var player in _players)
+                {
+                    player.Wounds = 0;
+                }
             }
 
             // 재대결 카운트다운이 시작하면 재대결하는 사람만 그 인원수로 다시 세우고 장전함. 나머지는 쓰러진 자리에 그대로 둠
@@ -282,6 +287,13 @@ public class Room
                     if (_rematchers.Contains(player.Id))
                     {
                         rematching.Add(player);
+
+                        // 쓰러졌다가 다시 서는 사람(함께 쓰러짐)은 반샷을 그 라운드 전으로 되돌림. 살아남은 사람의 반샷은 그대로 둠.
+                        // PlaceAtStart가 세우고 나면 Stand라 가를 수 없어 그 전에 봄
+                        if (player.Pose == Pose.Down)
+                        {
+                            player.Wounds = player.RoundStartWounds;
+                        }
                     }
                 }
                 PlaceAtStart(rematching, _rematchRounds);
@@ -301,6 +313,9 @@ public class Room
                     {
                         continue;
                     }
+
+                    // 이 라운드에 함께 쓰러지면 이 값으로 되돌림
+                    player.RoundStartWounds = player.Wounds;
 
                     // Atan2는 y를 먼저 받고 -π~π를 돌려줌. turn과 같은 0 이상 2π 미만으로 맞춤
                     double outward = Math.Atan2(player.Y - CenterY, player.X - CenterX);
@@ -383,7 +398,8 @@ public class Room
         }
     }
 
-    // 판정할 차례가 된 발사를 판정해 맞은 사람을 쓰러뜨리고, 쏜 사람에게만 갈 사격 결과와 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
+    // 판정할 차례가 된 발사를 판정해 맞은 사람에게 반샷을 더하거나 쓰러뜨림. 쏜 사람에게만 갈 사격 결과,
+    // 쓰러지지 않은 맞은 사람에게만 갈 반샷 알림, 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
     private List<object> JudgeShots(double now)
     {
         var messages = new List<object>();
@@ -394,22 +410,36 @@ public class Room
         }
         _pending.RemoveAll(s => s.At + ShotJudge.MaxDelay <= now);
 
-        var players = new List<(Guid Id, double X, double Y, double? DownAt)>();
+        var players = new List<(Guid Id, double X, double Y, double? DownAt, int Wounds)>();
         foreach (var player in _players)
         {
-            players.Add((player.Id, player.X, player.Y, player.DownAt));
+            players.Add((player.Id, player.X, player.Y, player.DownAt, player.Wounds));
         }
 
         foreach (var outcome in ShotJudge.Judge(due, players, ArenaMap.Fixed))
         {
             // 쏜 사람이 판정 전에 나갔으면 받을 사람이 없어 아무에게도 안 감 (TickLoop.MessagesFor)
             messages.Add(new Direct(outcome.ShooterId, new ShotResultMessage(outcome)));
+            if (outcome.TargetId == null)
+            {
+                continue;
+            }
+
+            var target = _players.Find(p => p.Id == outcome.TargetId)!;
+            if (outcome.Zone == HitZone.Body)
+            {
+                target.Wounds++;
+            }
+
             if (outcome.Down)
             {
-                var target = _players.Find(p => p.Id == outcome.TargetId)!;
                 target.Pose = Pose.Down;
                 target.DownAt = outcome.At;
                 messages.Add(new EliminatedMessage(target.Id));
+            }
+            else
+            {
+                messages.Add(new Direct(target.Id, new WoundedMessage()));
             }
         }
         return messages;
