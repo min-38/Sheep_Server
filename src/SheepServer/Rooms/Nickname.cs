@@ -6,8 +6,7 @@ public static class Nickname
     public const int MinLength = 2;
     public const int MaxLength = 8;
 
-    // 클라가 닉네임을 보내기 전에 쓰는 임시 이름.
-    // ponytail: 첫 화면(M8 계획 Task C1)이 닉네임을 보내면 지우고, nickname이 없으면 error로 바꿈
+    // Room·RoomRegistry를 이름 없이 부를 때(테스트) 쓰는 이름. 클라 메시지는 닉네임이 없으면 error라 여기까지 오지 않음 (SHEEP-73)
     public const string Placeholder = "총잡이";
 
     // 앞뒤 공백을 지우고 규칙에 맞으면 그 이름, 아니면 null. 한글(완성형 가~힣, 호환 자모 ㄱ~ㅣ)·영문·숫자만 받음.

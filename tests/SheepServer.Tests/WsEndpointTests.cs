@@ -22,11 +22,11 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
 
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         Assert.Equal("roomCreated", created.GetProperty("type").GetString());
         string code = created.GetProperty("code").GetString()!;
 
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         Assert.Equal("joined", joined.GetProperty("type").GetString());
         Assert.Equal(code, joined.GetProperty("code").GetString());
     }
@@ -59,6 +59,37 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         // 서버도 클라와 같은 규칙으로 다시 검사함 (시스템 기획서 방 화면 닉네임)
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+    }
+
+    [Theory]
+    [InlineData("""{"type":"createRoom"}""")]
+    [InlineData("""{"type":"quickJoin"}""")]
+    public async Task EnterWithoutNickname_Error(string message)
+    {
+        using var ws = await Connect();
+
+        var reply = await Request(ws, message);
+
+        // 첫 화면이 늘 닉네임을 보내므로 임시 이름을 주지 않고 틀린 닉네임과 같이 거절함 (SHEEP-73)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_NoNickname_ErrorAndStaysOut()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        var reply = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        await Task.Delay(100); // 그사이 틱이 지나 새 state가 옴
+        var state = await ReceiveWhere(host, IsState);
+
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+        Assert.Equal(1, state.GetProperty("players").GetArrayLength());
     }
 
     [Fact]
@@ -199,7 +230,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         if (code != oldCode)
         {
             using var other = await Connect();
-            var old = await Request(other, $$"""{"type":"joinRoom","code":"{{oldCode}}"}""");
+            var old = await Request(other, $$"""{"type":"joinRoom","code":"{{oldCode}}","nickname":"떠돌이"}""");
             Assert.Equal("notFound", old.GetProperty("reason").GetString());
         }
     }
@@ -240,7 +271,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         await Receive(host); // map
 
         var left = await Request(host, """{"type":"leaveRoom"}""");
-        var join = await Request(other, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var join = await Request(other, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
 
         // 마지막 사람이 나가 방이 지워짐 (기술 설계서 메시지 leaveRoom)
         Assert.Equal("left", left.GetProperty("type").GetString());
@@ -273,10 +304,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
 
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code.ToLowerInvariant()}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code.ToLowerInvariant()}}","nickname":"떠돌이"}""");
 
         Assert.Equal("joined", joined.GetProperty("type").GetString());
     }
@@ -287,7 +318,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var ws = await Connect();
 
         // '-'는 방 코드에 안 쓰는 글자라 이 코드의 방은 절대 없음
-        var reply = await Request(ws, """{"type":"joinRoom","code":"NO-ROOM"}""");
+        var reply = await Request(ws, """{"type":"joinRoom","code":"NO-ROOM","nickname":"떠돌이"}""");
 
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("notFound", reply.GetProperty("reason").GetString());
@@ -298,7 +329,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
 
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         var map = await Receive(host);
 
         Assert.Equal("roomCreated", created.GetProperty("type").GetString());
@@ -310,10 +341,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
 
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         var map = await Receive(guest);
 
         Assert.Equal("joined", joined.GetProperty("type").GetString());
@@ -324,12 +355,12 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     public async Task JoinRoom_SameRoomAgain_SendsMapAgain()
     {
         using var host = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
         await Receive(host);
 
         // 이미 들어가 있는 방의 코드로 다시 입장함
-        var joined = await Request(host, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(host, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         var map = await Receive(host);
 
         Assert.Equal("joined", joined.GetProperty("type").GetString());
@@ -342,9 +373,9 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
 
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
 
         // 클라는 이 id로 state에서 자기를 찾음 (기술 설계서 메시지 roomCreated, joined)
         string hostId = created.GetProperty("playerId").GetString()!;
@@ -359,10 +390,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string hostId = created.GetProperty("playerId").GetString()!;
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         string guestId = joined.GetProperty("playerId").GetString()!;
 
         await Send(guest, """{"type":"turn","angle":1.25}""");
@@ -379,9 +410,9 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         string guestId = joined.GetProperty("playerId").GetString()!;
 
         // 숫자가 아닌 각도와 빠진 각도는 버림. 이것 때문에 연결이 끊기면 다음 turn이 오지 않음
@@ -397,10 +428,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string hostId = created.GetProperty("playerId").GetString()!;
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         string guestId = joined.GetProperty("playerId").GetString()!;
 
         await Send(guest, """{"type":"ready","ready":true}""");
@@ -416,9 +447,9 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var host = await Connect();
         using var guest = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         string guestId = joined.GetProperty("playerId").GetString()!;
 
         // true·false가 아니면 버림. 한 연결의 메시지는 차례대로 처리되므로, 뒤에 보낸 각도가 보이면 앞의 것도 처리된 것임
@@ -441,7 +472,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
 
         // 방 밖에서 보낸 준비는 버림. 그 뒤 방을 만들어도 준비 안 한 채로 들어감
         await Send(ws, """{"type":"ready","ready":true}""");
-        var created = await Request(ws, """{"type":"createRoom"}""");
+        var created = await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
         string playerId = created.GetProperty("playerId").GetString()!;
 
         var state = await ReceiveWhere(ws, m => IsState(m) && ReadyOf(m, playerId) != null);
@@ -465,7 +496,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     public async Task ClockSync_InRoom_RepliesBetweenStates()
     {
         using var host = await Connect();
-        await Request(host, """{"type":"createRoom"}""");
+        await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
 
         // 방 안에서는 state가 틱마다 섞여 옴. 답은 틱을 기다리지 않고 따로 옴
         await Send(host, """{"type":"clockSync","t0":42}""");
@@ -511,9 +542,9 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         double ts = serverTime.GetProperty("ts").GetDouble();
         await Task.Delay(300);
 
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
-        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         await Send(host, """{"type":"ready","ready":true}""");
         await Send(guest, """{"type":"ready","ready":true}""");
         var hostPhase = await ReceiveWhere(host, IsPhase);
@@ -534,15 +565,15 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
         using var late = await Connect();
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
-        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         await Send(host, """{"type":"ready","ready":true}""");
         await Send(guest, """{"type":"ready","ready":true}""");
         await ReceiveWhere(host, IsPhase);
 
         // 카운트다운이 정해진 뒤에는 들어갈 수 없음 (기술 설계서 메시지 joinRoom)
-        var reply = await Request(late, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var reply = await Request(late, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
 
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("playing", reply.GetProperty("reason").GetString());
@@ -552,7 +583,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     public async Task Fire_NotANumber_IgnoredAndConnectionKeepsWorking()
     {
         using var ws = await Connect();
-        await Request(ws, """{"type":"createRoom"}""");
+        await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
 
         // 숫자가 아닌 각도, 위아래 각도, 시각과 빠진 필드는 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
         await Send(ws, """{"type":"fire","angle":"1","pitch":0,"at":100}""");
@@ -571,7 +602,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     public async Task Stop_NotANumber_IgnoredAndConnectionKeepsWorking()
     {
         using var ws = await Connect();
-        await Request(ws, """{"type":"createRoom"}""");
+        await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
 
         // 숫자가 아닌 시각과 빠진 시각은 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
         await Send(ws, """{"type":"stop","at":"100"}""");
@@ -664,10 +695,10 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     // 결투 알림은 준비하고 7~9초 뒤에 옴 (카운트다운 3초, 걷기 3초, 무작위 대기 1~3초)
     static async Task<(string HostId, string GuestId, double DuelAt)> PlayUntilDuel(WebSocket host, WebSocket guest)
     {
-        var created = await Request(host, """{"type":"createRoom"}""");
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string hostId = created.GetProperty("playerId").GetString()!;
         string code = created.GetProperty("code").GetString()!;
-        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
         string guestId = joined.GetProperty("playerId").GetString()!;
         await Send(host, """{"type":"ready","ready":true}""");
         await Send(guest, """{"type":"ready","ready":true}""");
