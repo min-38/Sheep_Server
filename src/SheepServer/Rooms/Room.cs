@@ -514,7 +514,8 @@ public class Room
     }
 
     // 판정할 차례가 된 발사를 판정해 맞은 사람에게 반샷을 더하거나 쓰러뜨림. 쏜 사람에게만 갈 사격 결과,
-    // 쓰러지지 않은 맞은 사람에게만 갈 반샷 알림(둘 다 그 사람을 보는 관전자에게도 감), 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
+    // 쓰러지지 않은 맞은 사람에게만 갈 반샷 알림(둘 다 그 사람을 보는 관전자에게도 감), 모두에게 갈 탈락 알림,
+    // 쓰러진 사람에게만 갈 쓰러뜨린 사람 알림을 돌려줌. lock 안에서 부름
     private List<object> JudgeShots(double now)
     {
         var messages = new List<object>();
@@ -551,6 +552,9 @@ public class Room
                 target.Pose = Pose.Down;
                 target.DownAt = outcome.At;
                 messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot));
+
+                // 판정이 쏜 시각 순서라 이 발사가 마지막으로 맞힌 발사임. 쓰러진 사람의 다시 보기에만 쓰여 관전자에게 복사하지 않음
+                messages.Add(new Direct(target.Id, new DownedByMessage(outcome.ShooterId, outcome.At)));
             }
             else
             {

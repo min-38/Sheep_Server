@@ -9,11 +9,12 @@ public class RoomTests
 {
     private const double Tolerance = 1e-9;
 
-    // 셋이 다 걸었을 때 a(0번, +x 쪽)에서 b(1번)와 c(2번)를 겨누는 각도, b에서 a를, c에서 b를 겨누는 각도.
+    // 셋이 다 걸었을 때 a(0번, +x 쪽)에서 b(1번)와 c(2번)를 겨누는 각도, b에서 a와 c를, c에서 b를 겨누는 각도.
     // 셋은 중심에서 같은 거리에 120°씩 떨어져 있어 서로 정삼각형을 이룸
     private const double AToB = 5 * Math.PI / 6;
     private const double AToC = 7 * Math.PI / 6;
     private const double BToA = 11 * Math.PI / 6;
+    private const double BToC = 3 * Math.PI / 2;
     private const double CToB = Math.PI / 2;
     // 넷이 다 걸었을 때 b(1번, +y 쪽)에서 a(0번, +x 쪽)를, c(2번, -x 쪽)에서 d(3번, -y 쪽)를, d에서 c를 겨누는 각도.
     // 넷은 정사각형을 이뤄 이웃끼리 √2(R + 걸은 거리)만큼 떨어짐
@@ -971,7 +972,8 @@ public class RoomTests
         var messages = _room.Step(duelAt + 100 + ShotJudge.MaxDelay);
 
         // Assert
-        // 명중을 정한 틱에 쏜 사람에게만 사격 결과를, 모두에게 탈락을 알리고, 같은 틱의 state부터 쓰러짐. 둘이 남고 c에게 총알이 있어 결과는 없음
+        // 명중을 정한 틱에 쏜 사람에게만 사격 결과를, 모두에게 탈락을, 쓰러진 사람에게만 쓰러뜨린 사람을 알리고, 같은 틱의 state부터 쓰러짐.
+        // 둘이 남고 c에게 총알이 있어 결과는 없음
         Assert.Collection(
             messages,
             m => Assert.Equal(_a, Assert.IsType<Direct>(m).To),
@@ -981,6 +983,7 @@ public class RoomTests
                 Assert.Equal(_b, eliminated.PlayerId);
                 Assert.Equal(EliminationReason.Shot, eliminated.Reason);
             },
+            m => Assert.Equal(_b, Assert.IsType<Direct>(m).To),
             m =>
             {
                 var state = Assert.IsType<StateMessage>(m);
@@ -1225,7 +1228,7 @@ public class RoomTests
 
         // Assert
         // 사격 결과는 쏜 사람 a에게만 감. 머리 가운데 높이에 맞아 바로 쓰러짐. 탈락은 지금처럼 모두에게 감 (기술 설계서 메시지 shotResult)
-        var direct = Assert.Single(messages.OfType<Direct>());
+        var direct = Assert.Single(messages.OfType<Direct>(), d => d.Message is ShotResultMessage);
         Assert.Equal(_a, direct.To);
         var result = Assert.IsType<ShotResultMessage>(direct.Message);
         Assert.Equal(HitZone.Head, result.Zone);
@@ -2087,6 +2090,62 @@ public class RoomTests
         Assert.NotNull(spectating);
         Assert.Single(TickLoop.MessagesFor(_b, messages).OfType<ShotResultMessage>());
         Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<ShotResultMessage>());
+    }
+
+    [Fact]
+    public void Step_HeadShot_DownedByToTargetOnly()
+    {
+        // Arrange
+        double duelAt = StartDuelWith(_a, _b, _c); // 셋이어야 b가 쓰러져도 결투가 이어짐
+        _room.Fire(_a, AToB, HeadInTriangle, duelAt + 100, duelAt + 120);
+
+        // Act
+        var messages = _room.Step(duelAt + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 쓰러진 b에게만 쓰러뜨린 a와 그 발사의 쏜 시각을 eliminated 바로 뒤에 알림. 다시 보기가 a의 눈으로 그림 (기술 설계서 메시지 downedBy)
+        var toB = TickLoop.MessagesFor(_b, messages).ToList();
+        int eliminated = toB.FindIndex(m => m is EliminatedMessage);
+        var downedBy = Assert.IsType<DownedByMessage>(toB[eliminated + 1]);
+        Assert.Equal(_a, downedBy.PlayerId);
+        Assert.Equal(duelAt + 100, downedBy.At, Tolerance);
+        Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<DownedByMessage>());
+        Assert.Empty(TickLoop.MessagesFor(_c, messages).OfType<DownedByMessage>());
+    }
+
+    [Fact]
+    public void Step_SecondWound_DownedByLastShooter()
+    {
+        // Arrange
+        // a가 먼저 c의 몸을, b가 나중에 c의 몸을 맞힘. 두 번째 반샷에 c가 쓰러짐
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, AToC, 0, duelAt + 100, duelAt + 120);
+        _room.Fire(_b, BToC, 0, duelAt + 150, duelAt + 170);
+
+        // Act
+        var messages = _room.Step(duelAt + 150 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 쓰러뜨린 발사는 쏜 시각 순서로 마지막에 맞힌 b의 것임
+        var downedBy = Assert.Single(TickLoop.MessagesFor(_c, messages).OfType<DownedByMessage>());
+        Assert.Equal(_b, downedBy.PlayerId);
+        Assert.Equal(duelAt + 150, downedBy.At, Tolerance);
+    }
+
+    [Fact]
+    public void Step_Timeout_NoDownedBy()
+    {
+        // Arrange
+        double duelAt = StartDuel(); // 아무도 쏘지 않음
+        double deadline = duelAt + RoundFlow.DuelLimit;
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 자살은 쏜 사람이 없어 알리지 않음. 클라는 내 눈으로 다시 봄
+        Assert.Equal(2, messages.OfType<EliminatedMessage>().Count());
+        Assert.DoesNotContain(messages.OfType<Direct>(), d => d.Message is DownedByMessage);
     }
 
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
