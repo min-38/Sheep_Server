@@ -4,7 +4,7 @@ namespace SheepServer.Rooms;
 
 public class Player
 {
-    public Player(Guid id, double x, double y, double angle, string nickname, int color)
+    public Player(Guid id, double x, double y, double angle, string nickname, int color, int character = 0)
     {
         Id = id;
         X = x;
@@ -13,6 +13,7 @@ public class Player
         Ready = false;
         Nickname = nickname;
         Color = color;
+        Character = character;
     }
 
     public Guid Id { get; }
@@ -22,6 +23,9 @@ public class Player
 
     // 목수건 색 번호(0~7). 방에 있는 동안 바뀌지 않음 (컨셉 기획서 사람 구별)
     public int Color { get; }
+
+    // 들어올 때 고른 캐릭터 번호(Character). 방에 있는 동안 바뀌지 않음 (시스템 기획서 캐릭터 고르기)
+    public int Character { get; }
 
     public double X { get; set; }
     public double Y { get; set; }

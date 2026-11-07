@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using SheepServer.Arena;
+using SheepServer.Rooms;
 using SheepServer.Rounds;
 using SheepServer.Shooting;
 
@@ -158,6 +159,71 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         // 인원 제한은 2~8명 정수 (시스템 기획서 방 화면 방 만들기)
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("maxPlayers", reply.GetProperty("reason").GetString());
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("1.5")]
+    [InlineData("\"0\"")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadCharacter_Error(string character)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","character":{{character}}}""");
+
+        // 캐릭터 번호는 0 이상 캐릭터 수 미만 정수 (기술 설계서 메시지 createRoom character)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("character", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task CreateRoom_PastLastCharacter_Error()
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","character":{{Character.Count}}}""");
+
+        Assert.Equal("character", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_BadCharacter_ErrorBeforeCode()
+    {
+        using var guest = await Connect();
+
+        // 없는 방 코드여도 캐릭터를 먼저 봄. 닉네임과 같음 (기술 설계서 메시지 joinRoom)
+        var reply = await Request(guest, """{"type":"joinRoom","code":"NOPE00","nickname":"떠돌이","character":-1}""");
+
+        Assert.Equal("character", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task QuickJoin_BadCharacter_Error()
+    {
+        using var ws = await Connect();
+
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관","character":"0"}""");
+
+        Assert.Equal("character", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_Character_OthersSeeItInState()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        int last = Character.Count - 1;
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이","character":{{last}}}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // 보내지 않은 방장은 0번 (기술 설계서 메시지 state character)
+        var state = await ReceiveWhere(host, m => IsState(m) && CharacterOf(m, guestId) != null);
+        Assert.Equal(last, CharacterOf(state, guestId));
+        Assert.Equal(0, CharacterOf(state, hostId));
     }
 
     [Fact]
@@ -822,6 +888,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("angle").GetDouble();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 캐릭터 번호. 없으면 null
+    static int? CharacterOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("character").GetInt32();
             }
         }
         return null;

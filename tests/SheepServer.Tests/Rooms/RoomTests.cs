@@ -273,6 +273,23 @@ public class RoomTests
     }
 
     [Fact]
+    public void AddPlayer_Character_InState()
+    {
+        // Arrange
+        int last = Character.Count - 1;
+        _room.AddPlayer(_a, null, "보안관", last);
+        _room.AddPlayer(_b, null, "떠돌이");
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        // 방에 들어갈 때 고른 캐릭터. 보내지 않으면 0번 (기술 설계서 메시지 createRoom character)
+        Assert.Equal(last, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _b).Character);
+    }
+
+    [Fact]
     public void AddPlayer_NoNickname_Placeholder()
     {
         // Arrange
