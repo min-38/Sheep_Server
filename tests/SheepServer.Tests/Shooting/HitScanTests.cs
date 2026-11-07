@@ -121,8 +121,8 @@ public class HitScanTests
     public void FirstHit_AimUpAtHead_Head()
     {
         // Arrange
-        // 머리 옆면(앞으로 3 - HeadRadius)에서 눈높이보다 0.28 위. 몸 꼭대기와 머리 꼭대기 사이임
-        double pitch = Math.Atan(0.28 / (3 - HitScan.HeadRadius));
+        // 머리 옆면(앞으로 3 - HeadRadius)에서 눈높이보다 0.34 위. 몸 꼭대기(0.78)와 머리 꼭대기(0.9) 사이임
+        double pitch = Math.Atan(0.34 / (3 - HitScan.HeadRadius));
 
         // Act
         var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5)], Map());
@@ -130,7 +130,34 @@ public class HitScanTests
         // Assert
         Assert.NotNull(hit);
         Assert.Equal(HitZone.Head, hit.Zone);
-        Assert.Equal(HitScan.EyeHeight + 0.28, hit.Height, 1e-9);
+        Assert.Equal(HitScan.EyeHeight + 0.34, hit.Height, 1e-9);
+    }
+
+    [Fact]
+    public void FirstHit_BelowShoulder_Body()
+    {
+        // Arrange
+        // 몸 옆면(앞으로 3 - BodyRadius)에서 높이 0.75. 7.5등신 틀에서는 어깨 아래라 몸임 (시스템 기획서 리볼버, SHEEP-89)
+        double pitch = Math.Atan(0.25 / (3 - HitScan.BodyRadius));
+
+        // Act
+        var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5)], Map());
+
+        // Assert
+        Assert.NotNull(hit);
+        Assert.Equal(HitZone.Body, hit.Zone);
+        Assert.Equal(0.75, hit.Height, 1e-9);
+    }
+
+    [Fact]
+    public void FirstHit_BesideBodyAtEyeHeight_Miss()
+    {
+        // Act
+        // 광선에서 옆으로 0.2. 7.5등신 몸 반지름(0.15) 밖이라 눈높이로 쏴도 옆을 지나감 (SHEEP-89)
+        var hit = HitScan.FirstHit(5, 5, 0, 0, [(_b, 8, 5.2)], Map());
+
+        // Assert
+        Assert.Null(hit);
     }
 
     [Fact]
@@ -158,11 +185,11 @@ public class HitScanTests
     public void FirstHit_HeadHeightBesideHead_Miss()
     {
         // Arrange
-        // 맞을 사람이 광선에서 옆으로 0.2. 몸 반지름 안이지만 머리 반지름 밖임. 머리 높이로 쏘면 머리 옆을 지나감
-        double pitch = Math.Atan(0.28 / (3 - HitScan.HeadRadius));
+        // 맞을 사람이 광선에서 옆으로 0.1. 몸 반지름(0.15) 안이지만 머리 반지름(0.05) 밖임. 머리 높이로 쏘면 머리 옆을 지나감
+        double pitch = Math.Atan(0.34 / (3 - HitScan.HeadRadius));
 
         // Act
-        var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5.2)], Map());
+        var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5.1)], Map());
 
         // Assert
         Assert.Null(hit);

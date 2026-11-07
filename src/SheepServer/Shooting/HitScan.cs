@@ -5,12 +5,12 @@ namespace SheepServer.Shooting;
 // 명중 판정 규칙 (기술 설계서 명중 판정). 방과 시계를 모르고 위치와 맵만 받아 테스트에서 바로 부를 수 있음
 public static class HitScan
 {
-    // 칸. 사람을 몸과 머리 두 원기둥으로 봄. 모자는 판정에 넣지 않음 (시스템 기획서 리볼버, 블록 캐릭터 비율 SHEEP-47).
-    // 클라의 사격 결과 카드(SHEEP-62)도 이 값으로 총알 구멍을 찍음. ponytail: 임시 값. 플레이해 보며 정함
+    // 칸. 사람을 몸과 머리 두 원기둥으로 봄. 7.5등신 틀에서 키를 0.9칸으로 보고 잼. 모자는 판정에 넣지 않음 (시스템 기획서 리볼버, SHEEP-89).
+    // 클라 hitcard.ts의 BODY, HEAD와 같은 값이어야 사격 결과 카드(SHEEP-62)의 총알 구멍이 맞은 자리에 찍힘. ponytail: 임시 값. 플레이해 보며 정함
     public const double EyeHeight = 0.5;
-    public const double BodyRadius = 0.23;
-    public const double BodyTop = 0.68;
-    public const double HeadRadius = 0.11;
+    public const double BodyRadius = 0.15;
+    public const double BodyTop = 0.78;
+    public const double HeadRadius = 0.05;
     public const double HeadTop = 0.9;
 
     // 칸. 벽을 찾을 때 광선을 따라 이만큼씩 나아감.
