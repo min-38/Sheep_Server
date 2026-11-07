@@ -679,6 +679,14 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         foreach (var ws in new[] { host, guest })
         {
             await ReceiveWhere(ws, m => IsType(m, "eliminated"));
+
+            // 쓰러진 guest는 eliminated 바로 뒤에 쓰러뜨린 사람을 받음 (기술 설계서 메시지 downedBy)
+            if (ws == guest)
+            {
+                var downedBy = await Receive(ws);
+                Assert.Equal("downedBy", downedBy.GetProperty("type").GetString());
+                Assert.Equal(hostId, downedBy.GetProperty("playerId").GetString());
+            }
             var result = await Receive(ws);
             Assert.Equal("result", result.GetProperty("type").GetString());
             Assert.Equal("win", result.GetProperty("outcome").GetString());
