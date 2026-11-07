@@ -10,6 +10,8 @@ public class NicknameTests
     [InlineData("가나", "가나")]
     [InlineData("가나다라마바사아", "가나다라마바사아")]
     [InlineData("Billy99", "Billy99")]
+    [InlineData("ㅁㅁ", "ㅁㅁ")]
+    [InlineData("ㅋㅋ보안관", "ㅋㅋ보안관")]
     public void Normalize_ValidName_TrimmedName(string raw, string expected)
     {
         // Act
@@ -25,7 +27,7 @@ public class NicknameTests
     [InlineData("가나다라마바사아자")]
     [InlineData("보 안")]
     [InlineData("보안관!")]
-    [InlineData("ㅋㅋ")]
+    [InlineData("\u3164\u3164")]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
@@ -35,7 +37,7 @@ public class NicknameTests
         string? name = Nickname.Normalize(raw);
 
         // Assert
-        // 자모만 쓴 이름은 포스터에서 읽기 어려워 받지 않음. 완성형 한글(가~힣)만 한글로 봄
+        // 한글은 완성형(가~힣)과 호환 자모(ㄱ~ㅣ). 자모 다음의 한글 채움 문자(U+3164)는 보이지 않는 글자라 받지 않음
         Assert.Null(name);
     }
 }

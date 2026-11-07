@@ -28,8 +28,8 @@ public class RoomRegistry
     }
 
     // Create
-    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer)
-    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false)
+    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임의 방"
+    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null)
     {
         lock (_rooms)
         {
@@ -50,7 +50,7 @@ public class RoomRegistry
                 throw new ArgumentException("MaxPlayers must be less than or equal to 8.");
             }
 
-            Room newRoom = new Room(roomId, maxPlayers, isPrivate);
+            Room newRoom = new Room(roomId, maxPlayers, isPrivate, name ?? RoomName.Default(nickname ?? Nickname.Placeholder));
             _rooms.Add(roomId, newRoom);
 
             CancellationTokenSource cts = new CancellationTokenSource();
@@ -102,6 +102,22 @@ public class RoomRegistry
                 return (open.RoomId, false);
             }
             return (AddRoom(playerId, maxPlayers, send, nickname), true);
+        }
+    }
+
+    // 대기실 보기의 공개 방 목록 (시스템 기획서 방 화면 대기실 보기). 비공개 방은 넣지 않음.
+    // 들어갈 수 있는 방(판 도중 아님, 꽉 차지 않음)을 위에, 그 안에서는 사람이 많은 방부터, 같으면 코드 순
+    public List<RoomSummary> List()
+    {
+        lock (_rooms)
+        {
+            return _rooms.Values
+                .Where(r => !r.IsPrivate)
+                .Select(r => r.Summarize())
+                .OrderByDescending(s => !s.Playing && s.Players.Count < s.Max)
+                .ThenByDescending(s => s.Players.Count)
+                .ThenBy(s => s.Code, StringComparer.Ordinal)
+                .ToList();
         }
     }
 

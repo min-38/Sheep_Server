@@ -222,4 +222,131 @@ public class RoomRegistryTests
         // Assert
         Assert.Equal("보안관", state.Players.Single().Nickname);
     }
+
+    [Fact]
+    public void List_PrivateRoomHidden()
+    {
+        // Arrange
+        string open = _registry.AddRoom(Guid.NewGuid(), 8);
+        _registry.AddRoom(Guid.NewGuid(), 8, isPrivate: true);
+
+        // Act
+        var rooms = _registry.List();
+
+        // Assert
+        // 시스템 기획서 방 화면 방 만들기: 비공개 방은 대기실 보기에 나오지 않음
+        Assert.Equal(open, Assert.Single(rooms).Code);
+    }
+
+    [Fact]
+    public void List_JoinableFirstThenByCount()
+    {
+        // Arrange
+        // 들어갈 수 있는 1명 방, 들어갈 수 있는 2명 방, 꽉 찬 2명 방, 판 진행 중인 3명 방
+        var registry = new RoomRegistry(new Queue<string>(["AAAAAA", "BBBBBB", "CCCCCC", "DDDDDD"]).Dequeue);
+        string one = registry.AddRoom(Guid.NewGuid(), 8);
+        string two = registry.AddRoom(Guid.NewGuid(), 8);
+        registry.JoinRoom(two, Guid.NewGuid());
+        string full = registry.AddRoom(Guid.NewGuid(), 2);
+        registry.JoinRoom(full, Guid.NewGuid());
+        var players = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        string playing = registry.AddRoom(players[0], 8);
+        registry.JoinRoom(playing, players[1]);
+        registry.JoinRoom(playing, players[2]);
+        var playingRoom = registry.GetRoomById(playing)!;
+        foreach (var id in players)
+        {
+            playingRoom.SetReady(id, true);
+        }
+        playingRoom.Step(0); // 모두 준비해 카운트다운이 정해짐
+
+        // Act
+        var rooms = registry.List();
+
+        // Assert
+        // 시스템 기획서 방 화면 대기실 보기: 들어갈 수 있는 방을 위에, 그중 사람이 많은 방을 먼저
+        Assert.Equal([two, one], rooms.Take(2).Select(r => r.Code));
+        Assert.Equal(new[] { full, playing }.Order(), rooms.Skip(2).Select(r => r.Code).Order());
+    }
+
+    [Fact]
+    public void List_PlayersWithNicknameAndColor()
+    {
+        // Arrange
+        string code = _registry.AddRoom(Guid.NewGuid(), 8, null, "보안관");
+        _registry.JoinRoom(code, Guid.NewGuid(), null, "떠돌이");
+
+        // Act
+        var room = Assert.Single(_registry.List());
+
+        // Assert
+        Assert.Equal([new RoomMember("보안관", 0), new RoomMember("떠돌이", 1)], room.Players);
+        Assert.Equal(8, room.Max);
+        Assert.False(room.Playing);
+    }
+
+    [Fact]
+    public void List_RoundScheduled_Playing()
+    {
+        // Arrange
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        string code = _registry.AddRoom(a, 8);
+        _registry.JoinRoom(code, b);
+        var room = _registry.GetRoomById(code)!;
+        room.SetReady(a, true);
+        room.SetReady(b, true);
+        room.Step(0); // 모두 준비해 카운트다운이 정해짐
+
+        // Act
+        var listed = Assert.Single(_registry.List());
+
+        // Assert
+        Assert.True(listed.Playing);
+    }
+
+    [Fact]
+    public void AddRoom_Name_InList()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 4, null, "보안관", false, "먼지 낀 술집");
+        var room = Assert.Single(_registry.List());
+
+        // Assert
+        Assert.Equal("먼지 낀 술집", room.Name);
+        Assert.Equal(4, room.Max);
+    }
+
+    [Fact]
+    public void AddRoom_NoName_NicknameRoom()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 8, null, "보안관");
+
+        // Assert
+        Assert.Equal("보안관의 방", Assert.Single(_registry.List()).Name);
+    }
+
+    [Fact]
+    public void AddRoom_NoNameNoNickname_PlaceholderRoom()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 8);
+
+        // Assert
+        Assert.Equal(RoomName.Default(Nickname.Placeholder), Assert.Single(_registry.List()).Name);
+    }
+
+    [Fact]
+    public void QuickJoin_Creates_NicknameRoom()
+    {
+        // Act
+        _registry.QuickJoin(_hostId, 8, null, "떠돌이");
+
+        // Assert
+        // 시스템 기획서 방 화면 랜덤 입장: 새로 만드는 방은 "닉네임의 방", 8명, 공개
+        var room = Assert.Single(_registry.List());
+        Assert.Equal("떠돌이의 방", room.Name);
+        Assert.Equal(8, room.Max);
+    }
 }

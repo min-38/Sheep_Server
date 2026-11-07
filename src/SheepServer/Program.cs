@@ -98,6 +98,13 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         return nickname != null;
     }
 
+    // 방에 들어간 답(roomCreated, joined). 칠판에 적을 방 이름과 비공개 여부를 함께 줌 (기술 설계서 메시지 roomCreated)
+    object Entered(string type, string code)
+    {
+        var room = registry.GetRoomById(code)!;
+        return new { type, code, playerId, name = room.Name, @private = room.IsPrivate };
+    }
+
     async Task<object[]> Handle(string text)
     {
         JsonDocument doc;
@@ -125,13 +132,32 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "nickname" }];
                     }
+                    // 방 이름은 없으면 "닉네임의 방", 있으면 규칙에 맞아야 함 (시스템 기획서 방 화면 방 만들기)
+                    string? roomName = null;
+                    if (root.TryGetProperty("name", out var nameProp))
+                    {
+                        roomName = nameProp.ValueKind == JsonValueKind.String ? RoomName.Normalize(nameProp.GetString()) : null;
+                        if (roomName == null)
+                        {
+                            return [new { type = "error", reason = "roomName" }];
+                        }
+                    }
+
+                    // 인원 제한은 없으면 8명, 있으면 2~8명 정수. 정수가 아니면 TryGetInt32가 false
+                    int maxPlayers = MaxPlayers;
+                    if (root.TryGetProperty("maxPlayers", out var maxProp)
+                        && (maxProp.ValueKind != JsonValueKind.Number || !maxProp.TryGetInt32(out maxPlayers) || maxPlayers < 2 || maxPlayers > MaxPlayers))
+                    {
+                        return [new { type = "error", reason = "maxPlayers" }];
+                    }
+
                     // private가 true일 때만 비공개 방. 없거나 다른 값이면 공개 방
                     bool isPrivate = root.TryGetProperty("private", out var p) && p.ValueKind == JsonValueKind.True;
 
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, MaxPlayers, Enqueue, hostName, isPrivate);
-                    return [new { type = "roomCreated", code = roomId, playerId }, mapMessage];
+                    roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName);
+                    return [Entered("roomCreated", roomId), mapMessage];
 
                 case "joinRoom":
                     if (!ReadNickname(root, out string? guestName))
@@ -142,7 +168,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                         ? c.GetString()!.ToUpperInvariant() : null;
                     if (code != null && code == roomId)
                     {
-                        return [new { type = "joined", code, playerId }, mapMessage];
+                        return [Entered("joined", code), mapMessage];
                     }
                     switch (registry.JoinRoom(code, playerId, Enqueue, guestName))
                     {
@@ -150,7 +176,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
                             registry.LeaveRoom(roomId, playerId);
                             roomId = code;
-                            return [new { type = "joined", code, playerId }, mapMessage];
+                            return [Entered("joined", code!), mapMessage];
                         case JoinResult.Full:
                             return [new { type = "error", reason = "full" }];
                         case JoinResult.Playing:
@@ -168,7 +194,11 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     registry.LeaveRoom(roomId, playerId);
                     var (quickCode, created) = registry.QuickJoin(playerId, MaxPlayers, Enqueue, quickName);
                     roomId = quickCode;
-                    return [new { type = created ? "roomCreated" : "joined", code = quickCode, playerId }, mapMessage];
+                    return [Entered(created ? "roomCreated" : "joined", quickCode), mapMessage];
+
+                case "listRooms":
+                    // 방에 들어가기 전에도 받음. 첫 화면의 대기실 보기가 열려 있는 동안 2초마다 보냄
+                    return [new { type = "rooms", rooms = registry.List() }];
 
                 case "leaveRoom":
                     // 방에 없어도 답함. 대기실의 나가기 버튼이 첫 화면으로 돌아가는 신호로 씀

@@ -47,7 +47,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     [Theory]
     [InlineData("\"가\"")]
     [InlineData("\"보안관!\"")]
-    [InlineData("\"ㅋㅋ\"")]
+    [InlineData("\"보 안\"")]
     [InlineData("7")]
     [InlineData("null")]
     public async Task CreateRoom_BadNickname_Error(string nickname)
@@ -76,6 +76,92 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("nickname", reply.GetProperty("reason").GetString());
         Assert.Equal(1, state.GetProperty("players").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task CreateRoom_NameAndMax_InReplyAndList()
+    {
+        using var host = await Connect();
+        using var browser = await Connect();
+
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","name":" 먼지 낀 술집 ","maxPlayers":4,"private":false}""");
+        string code = created.GetProperty("code").GetString()!;
+        var list = await Request(browser, """{"type":"listRooms"}""");
+
+        // 앞뒤 공백을 지운 이름과 비공개 여부가 답에 실리고, 목록에는 이름과 인원 제한이 실림 (기술 설계서 메시지 roomCreated, rooms)
+        Assert.Equal("먼지 낀 술집", created.GetProperty("name").GetString());
+        Assert.False(created.GetProperty("private").GetBoolean());
+        var room = list.GetProperty("rooms").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code);
+        Assert.Equal("먼지 낀 술집", room.GetProperty("name").GetString());
+        Assert.Equal(4, room.GetProperty("max").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("\"a\"")]
+    [InlineData("\"가나다라마바사아자차카타파하가나다\"")]
+    [InlineData("\"a\\nb\"")]
+    [InlineData("7")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadName_Error(string name)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","name":{{name}}}""");
+
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("roomName", reply.GetProperty("reason").GetString());
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("9")]
+    [InlineData("2.5")]
+    [InlineData("\"8\"")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadMaxPlayers_Error(string maxPlayers)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","maxPlayers":{{maxPlayers}}}""");
+
+        // 인원 제한은 2~8명 정수 (시스템 기획서 방 화면 방 만들기)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("maxPlayers", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_Joined_HasNameAndPrivate()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","name":"비밀 금광","private":true}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+
+        // 들어온 사람도 칠판에 방 이름과 "비공개"를 적을 수 있게 함 (시스템 기획서 방 화면 방 만들기)
+        Assert.Equal("비밀 금광", joined.GetProperty("name").GetString());
+        Assert.True(joined.GetProperty("private").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ListRooms_BeforeJoining_Rooms()
+    {
+        using var host = await Connect();
+        using var browser = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        // 방에 들어가기 전에도 보낼 수 있음 (기술 설계서 메시지 listRooms)
+        var reply = await Request(browser, """{"type":"listRooms"}""");
+
+        Assert.Equal("rooms", reply.GetProperty("type").GetString());
+        var room = reply.GetProperty("rooms").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code);
+        var player = Assert.Single(room.GetProperty("players").EnumerateArray());
+        Assert.Equal("보안관", player.GetProperty("nickname").GetString());
+        Assert.Equal(0, player.GetProperty("color").GetInt32());
+        Assert.Equal(8, room.GetProperty("max").GetInt32());
+        Assert.False(room.GetProperty("playing").GetBoolean());
     }
 
     [Fact]
@@ -176,7 +262,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var ws = await Connect();
 
-        var reply = await Request(ws, """{"type":"quickJoin","nickname":"ㅋㅋ"}""");
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관!"}""");
 
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("nickname", reply.GetProperty("reason").GetString());
