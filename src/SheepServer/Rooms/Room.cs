@@ -39,15 +39,19 @@ public class Room
     private IReadOnlyList<Guid>? _rematchers;
     private int _rematchRounds;
 
-    public Room(string roomId, int maxPlayers)
+    public Room(string roomId, int maxPlayers, bool isPrivate = false)
     {
         _roomId = roomId;
         MaxPlayers = maxPlayers;
+        IsPrivate = isPrivate;
         _currentPlayers = 0;
         _players = new List<Player>();
     }
 
     public string RoomId => _roomId;
+
+    // 비공개 방은 랜덤 입장과 방 목록에 나오지 않고 방 코드로만 들어옴 (시스템 기획서 방 화면 방 만들기)
+    public bool IsPrivate { get; }
 
     public int TickNumber => _tickNumber;
 

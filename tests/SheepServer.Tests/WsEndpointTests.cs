@@ -79,6 +79,110 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task QuickJoin_ReplyThenMap()
+    {
+        using var ws = await Connect();
+
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관"}""");
+        var map = await Receive(ws);
+
+        // 들어갈 방이 있으면 joined, 없어 만들면 roomCreated (기술 설계서 메시지 quickJoin)
+        Assert.Contains(reply.GetProperty("type").GetString(), new[] { "joined", "roomCreated" });
+        Assert.False(string.IsNullOrEmpty(reply.GetProperty("code").GetString()));
+        AssertFixedMap(map);
+    }
+
+    [Fact]
+    public async Task QuickJoin_InRoom_LeavesFirst()
+    {
+        using var ws = await Connect();
+        var created = await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
+        string playerId = created.GetProperty("playerId").GetString()!;
+        await Receive(ws); // map
+
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관"}""");
+        string code = reply.GetProperty("code").GetString()!;
+        await Receive(ws); // map
+        var state = await ReceiveWhere(ws, IsState);
+
+        // 혼자 있던 방을 먼저 나가 그 방은 지워짐. 그러지 않으면 내 방을 골라 같은 사람이 둘 들어감.
+        // 새로 만든 방이 지워진 방의 코드를 다시 받을 수 있어(아주 드묾) 옛 방이 지워졌는지는 코드가 다를 때만 봄
+        int mine = state.GetProperty("players").EnumerateArray().Count(p => p.GetProperty("id").GetString() == playerId);
+        Assert.Equal(1, mine);
+        string oldCode = created.GetProperty("code").GetString()!;
+        if (code != oldCode)
+        {
+            using var other = await Connect();
+            var old = await Request(other, $$"""{"type":"joinRoom","code":"{{oldCode}}"}""");
+            Assert.Equal("notFound", old.GetProperty("reason").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task CreateRoom_Private_QuickJoinGoesElsewhere()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","private":true}""");
+
+        var reply = await Request(guest, """{"type":"quickJoin","nickname":"떠돌이"}""");
+
+        // 비공개 방은 랜덤 입장에 나오지 않고 코드로만 들어감 (시스템 기획서 방 화면 방 만들기)
+        Assert.NotEqual(created.GetProperty("code").GetString(), reply.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task CreateRoom_Private_JoinByCode()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","private":true}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+
+        Assert.Equal("joined", joined.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task LeaveRoom_Left_RoomGoneWhenEmpty()
+    {
+        using var host = await Connect();
+        using var other = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+        await Receive(host); // map
+
+        var left = await Request(host, """{"type":"leaveRoom"}""");
+        var join = await Request(other, $$"""{"type":"joinRoom","code":"{{code}}"}""");
+
+        // 마지막 사람이 나가 방이 지워짐 (기술 설계서 메시지 leaveRoom)
+        Assert.Equal("left", left.GetProperty("type").GetString());
+        Assert.Equal("notFound", join.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task LeaveRoom_NotInRoom_StillLeft()
+    {
+        using var ws = await Connect();
+
+        var left = await Request(ws, """{"type":"leaveRoom"}""");
+
+        Assert.Equal("left", left.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task QuickJoin_BadNickname_Error()
+    {
+        using var ws = await Connect();
+
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"ㅋㅋ"}""");
+
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
     public async Task JoinRoom_LowercaseCode_Joins()
     {
         using var host = await Connect();
