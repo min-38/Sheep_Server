@@ -40,4 +40,46 @@ public class TickLoopTests
         // Assert
         Assert.Equal(new[] { 1, 2, 3 }, ticks.Take(3));
     }
+
+    [Fact]
+    public void MessagesFor_DirectToMe_Unwrapped()
+    {
+        // Arrange
+        var me = Guid.NewGuid();
+        var inner = new object();
+
+        // Act
+        var messages = TickLoop.MessagesFor(me, [new Direct(me, inner)]);
+
+        // Assert
+        // 봉투는 서버 안에서만 씀. 받는 사람에게는 안의 메시지만 감
+        Assert.Same(inner, Assert.Single(messages));
+    }
+
+    [Fact]
+    public void MessagesFor_DirectToOther_Skipped()
+    {
+        // Act
+        // 받을 사람이 판정 전에 나갔어도 다른 사람에게 가지 않음. 따로 처리할 것 없이 아무에게도 안 감
+        var messages = TickLoop.MessagesFor(Guid.NewGuid(), [new Direct(Guid.NewGuid(), new object())]);
+
+        // Assert
+        Assert.Empty(messages);
+    }
+
+    [Fact]
+    public void MessagesFor_Broadcast_PassedThrough()
+    {
+        // Arrange
+        var me = Guid.NewGuid();
+        var first = new object();
+        var second = new object();
+
+        // Act
+        var messages = TickLoop.MessagesFor(me, [first, new Direct(Guid.NewGuid(), new object()), second]);
+
+        // Assert
+        // 봉투가 아닌 메시지는 모두에게 그대로, 순서도 그대로 감
+        Assert.Equal(new[] { first, second }, messages);
+    }
 }

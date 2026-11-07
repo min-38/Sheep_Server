@@ -311,9 +311,11 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var ws = await Connect();
         await Request(ws, """{"type":"createRoom"}""");
 
-        // 숫자가 아닌 각도나 시각, 빠진 필드는 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
-        await Send(ws, """{"type":"fire","angle":"1","at":100}""");
-        await Send(ws, """{"type":"fire","angle":1,"at":"100"}""");
+        // 숫자가 아닌 각도, 위아래 각도, 시각과 빠진 필드는 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
+        await Send(ws, """{"type":"fire","angle":"1","pitch":0,"at":100}""");
+        await Send(ws, """{"type":"fire","angle":1,"pitch":"0","at":100}""");
+        await Send(ws, """{"type":"fire","angle":1,"pitch":0,"at":"100"}""");
+        await Send(ws, """{"type":"fire","angle":1,"at":100}""");
         await Send(ws, """{"type":"fire"}""");
         await Send(ws, """{"type":"clockSync","t0":7}""");
 
@@ -331,16 +333,25 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
 
         // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 쏘면 guest가 맞음
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, at = duelAt + 10 }));
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = 0.0, at = duelAt + 10 }));
 
-        // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated)
+        // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated).
+        // 그 사이에 쏜 사람만 shotResult를 받음. 맞은 사람은 누가 어디를 맞혔는지 받지 않음
         foreach (var ws in new[] { host, guest })
         {
             var shot = await ReceiveWhere(ws, m => IsType(m, "shot"));
             Assert.Equal(hostId, shot.GetProperty("playerId").GetString());
             Assert.Equal(Math.PI, shot.GetProperty("angle").GetDouble(), 1e-9);
-            var eliminated = await ReceiveWhere(ws, m => IsType(m, "eliminated"));
-            Assert.Equal(guestId, eliminated.GetProperty("playerId").GetString());
+            var next = await Receive(ws);
+            if (ws == host)
+            {
+                Assert.Equal("shotResult", next.GetProperty("type").GetString());
+                Assert.Equal("body", next.GetProperty("zone").GetString());
+                Assert.True(next.GetProperty("down").GetBoolean());
+                next = await Receive(ws);
+            }
+            Assert.Equal("eliminated", next.GetProperty("type").GetString());
+            Assert.Equal(guestId, next.GetProperty("playerId").GetString());
         }
     }
 
@@ -351,7 +362,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
         var (hostId, _, duelAt) = await PlayUntilDuel(host, guest);
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, at = duelAt + 10 }));
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = 0.0, at = duelAt + 10 }));
 
         // 둘 다 eliminated를 받고, W + D가 지난 틱에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
         double lobbyAt = 0;
