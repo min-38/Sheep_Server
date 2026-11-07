@@ -403,7 +403,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -594,6 +594,9 @@ public class Room
             {
                 player.Ready = false;
             }
+
+            // 결과를 정한 이 틱의 state부터 오른 현상금이 보임. 재대결은 판이 끝나지 않아 세지 않음
+            _players.Find(p => p.Id == result.PlayerIds[0])!.Wins++;
         }
         else
         {
