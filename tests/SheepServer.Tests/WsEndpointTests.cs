@@ -32,6 +32,53 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task CreateRoom_Nickname_InState()
+    {
+        using var host = await Connect();
+
+        var created = await Request(host, """{"type":"createRoom","nickname":" 보안관 "}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        var state = await ReceiveWhere(host, IsState);
+
+        // 앞뒤 공백을 지운 이름이 state에 실림 (기술 설계서 메시지 state)
+        Assert.Equal("보안관", NicknameOf(state, hostId));
+    }
+
+    [Theory]
+    [InlineData("\"가\"")]
+    [InlineData("\"보안관!\"")]
+    [InlineData("\"ㅋㅋ\"")]
+    [InlineData("7")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadNickname_Error(string nickname)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":{{nickname}}}""");
+
+        // 서버도 클라와 같은 규칙으로 다시 검사함 (시스템 기획서 방 화면 닉네임)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_BadNickname_ErrorAndStaysOut()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        var reply = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"보 안"}""");
+        await Task.Delay(100); // 그사이 틱이 지나 새 state가 옴
+        var state = await ReceiveWhere(host, IsState);
+
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("nickname", reply.GetProperty("reason").GetString());
+        Assert.Equal(1, state.GetProperty("players").GetArrayLength());
+    }
+
+    [Fact]
     public async Task JoinRoom_LowercaseCode_Joins()
     {
         using var host = await Connect();
@@ -503,6 +550,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("angle").GetDouble();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 닉네임. 없으면 null
+    static string? NicknameOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("nickname").GetString();
             }
         }
         return null;

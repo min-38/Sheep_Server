@@ -143,6 +143,87 @@ public class RoomTests
     }
 
     [Fact]
+    public void AddPlayer_ColorsInJoinOrder()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.AddPlayer(_c);
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        // 컨셉 기획서 사람 구별: 들어온 순서대로 8가지 색 중 하나를 받음
+        Assert.Equal(0, Find(state, _a).Color);
+        Assert.Equal(1, Find(state, _b).Color);
+        Assert.Equal(2, Find(state, _c).Color);
+    }
+
+    [Fact]
+    public void AddPlayer_LeaverColorFreed_NextJoinerTakesLowest()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.AddPlayer(_c);
+        _room.RemovePlayer(_b);
+
+        // Act
+        _room.AddPlayer(_d);
+        var state = StateAt(0);
+
+        // Assert
+        // 나간 사람의 색은 비워 두고, 다음 사람이 비어 있는 가장 앞 색을 받음. 남은 사람의 색은 그대로
+        Assert.Equal(0, Find(state, _a).Color);
+        Assert.Equal(2, Find(state, _c).Color);
+        Assert.Equal(1, Find(state, _d).Color);
+    }
+
+    [Fact]
+    public void RemovePlayer_DuringRound_OthersKeepColor()
+    {
+        // Arrange
+        AddReady(_a, _b, _c);
+        ScheduleWalk(_room);
+
+        // Act
+        _room.RemovePlayer(_a);
+        var state = StateAt(2000);
+
+        // Assert
+        Assert.Equal(1, Find(state, _b).Color);
+        Assert.Equal(2, Find(state, _c).Color);
+    }
+
+    [Fact]
+    public void AddPlayer_Nickname_InState()
+    {
+        // Arrange
+        _room.AddPlayer(_a, null, "보안관");
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal("보안관", Find(state, _a).Nickname);
+    }
+
+    [Fact]
+    public void AddPlayer_NoNickname_Placeholder()
+    {
+        // Arrange
+        // 첫 화면(닉네임 칸)이 생기기 전의 클라는 닉네임을 보내지 않음
+        _room.AddPlayer(_a);
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(Nickname.Placeholder, Find(state, _a).Nickname);
+    }
+
+    [Fact]
     public void SetReady_ThenUnready_ReflectedInState()
     {
         // Arrange

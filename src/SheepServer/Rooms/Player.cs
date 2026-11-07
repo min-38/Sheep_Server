@@ -4,16 +4,25 @@ namespace SheepServer.Rooms;
 
 public class Player
 {
-    public Player(Guid id, double x, double y, double angle)
+    public Player(Guid id, double x, double y, double angle, string nickname, int color)
     {
         Id = id;
         X = x;
         Y = y;
         Angle = angle;
         Ready = false;
+        Nickname = nickname;
+        Color = color;
     }
 
     public Guid Id { get; }
+
+    // 포스터에 쓰는 이름. 같은 이름도 받으므로 사람은 Id와 목수건 색으로 가름
+    public string Nickname { get; }
+
+    // 목수건 색 번호(0~7). 방에 있는 동안 바뀌지 않음 (컨셉 기획서 사람 구별)
+    public int Color { get; }
+
     public double X { get; set; }
     public double Y { get; set; }
     public double Angle { get; set; }
