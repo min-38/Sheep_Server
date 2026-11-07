@@ -57,11 +57,11 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 쏜 사람의 받기 루프를 늦출 수 있음. TickLoop과 같은 한계이고, 문제가 되면 연결마다 보낼 큐를 둠
     async Task Broadcast(Room room, List<object> messages)
     {
-        foreach (var send in room.GetSenders())
+        foreach (var (to, send) in room.GetSenders())
         {
             try
             {
-                foreach (var message in messages)
+                foreach (var message in TickLoop.MessagesFor(to, messages))
                 {
                     await send(message);
                 }
@@ -143,13 +143,14 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     return [];
 
                 case "fire":
-                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사와 판정은 Room.Fire가 함
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. pitch가 없어도 버림. 범위 검사와 판정은 Room.Fire가 함
                     if (root.TryGetProperty("angle", out var angleProp) && angleProp.ValueKind == JsonValueKind.Number && angleProp.TryGetDouble(out double fireAngle)
+                        && root.TryGetProperty("pitch", out var pitchProp) && pitchProp.ValueKind == JsonValueKind.Number && pitchProp.TryGetDouble(out double firePitch)
                         && root.TryGetProperty("at", out var atProp) && atProp.ValueKind == JsonValueKind.Number && atProp.TryGetDouble(out double fireAt)
                         && registry.GetRoomById(roomId) is Room room)
                     {
                         // shot은 틱을 기다리지 않고 바로 방 안 모두(쏜 사람 포함)에게 보냄. 명중은 틱에서 정함 (기술 설계서 메시지 shot, eliminated)
-                        await Broadcast(room, room.Fire(playerId, fireAngle, fireAt, ServerClock.Now));
+                        await Broadcast(room, room.Fire(playerId, fireAngle, firePitch, fireAt, ServerClock.Now));
                     }
                     return [];
 

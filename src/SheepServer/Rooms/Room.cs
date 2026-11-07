@@ -180,8 +180,9 @@ public class Room
     }
 
     // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 돌려줌. 받으면 shot 하나, 버리면 빈 목록 (기술 설계서 메시지 fire).
-    // 명중은 여기서 정하지 않고 쏜 시각에서 W가 지난 틱(Step)에 정함. at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
-    public List<object> Fire(Guid playerId, double angle, double at, double now)
+    // 명중은 여기서 정하지 않고 쏜 시각에서 W가 지난 틱(Step)에 정함. pitch는 위아래 각도(라디안, 위가 +).
+    // at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
+    public List<object> Fire(Guid playerId, double angle, double pitch, double at, double now)
     {
         lock (_lock)
         {
@@ -191,6 +192,12 @@ public class Room
             // 결과가 정해져 다음 단계(Next)가 생기면 그 시각까지 버림
             bool dueling = (_round.Phase == RoundPhase.Duel && _round.Next == null) || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
             if (!dueling || !double.IsFinite(angle) || angle < 0 || angle >= 2 * Math.PI || !double.IsFinite(at) || at < _duelAt)
+            {
+                return messages;
+            }
+
+            // ±π/2면 tan이 무한대라 광선 높이를 잴 수 없고, 넘으면 뒤로 넘어감. 클라는 시선 한계(MAX_PITCH)에 흔들림을 더한 만큼만 보냄
+            if (!double.IsFinite(pitch) || Math.Abs(pitch) >= Math.PI / 2)
             {
                 return messages;
             }
@@ -219,7 +226,7 @@ public class Room
             // 받아들인 발사만 총알과 발사 간격을 씀
             shooter.Ammo--;
             shooter.LastShotAt = at;
-            _pending.Add(new Shot(playerId, angle, at));
+            _pending.Add(new Shot(playerId, angle, pitch, at));
             messages.Add(new ShotMessage(playerId, angle));
             return messages;
         }
@@ -344,12 +351,18 @@ public class Room
         }
     }
 
-    // 복사해서 돌려줌. 보내기는 await라 lock 밖에서 해야 하고, 그동안 입장과 퇴장이 목록을 바꿔도 됨
-    public List<Func<object, Task>> GetSenders()
+    // 복사해서 돌려줌. 보내기는 await라 lock 밖에서 해야 하고, 그동안 입장과 퇴장이 목록을 바꿔도 됨.
+    // id도 같이 줘서 한 사람에게만 갈 메시지(Direct)를 그 사람에게만 보냄
+    public List<(Guid Id, Func<object, Task> Send)> GetSenders()
     {
         lock (_lock)
         {
-            return new List<Func<object, Task>>(_senders.Values);
+            var senders = new List<(Guid Id, Func<object, Task> Send)>();
+            foreach (var (id, send) in _senders)
+            {
+                senders.Add((id, send));
+            }
+            return senders;
         }
     }
 
@@ -370,7 +383,7 @@ public class Room
         }
     }
 
-    // 판정할 차례가 된 발사를 판정해 맞은 사람을 쓰러뜨리고 탈락 알림을 돌려줌. lock 안에서 부름
+    // 판정할 차례가 된 발사를 판정해 맞은 사람을 쓰러뜨리고, 쏜 사람에게만 갈 사격 결과와 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
     private List<object> JudgeShots(double now)
     {
         var messages = new List<object>();
@@ -387,12 +400,17 @@ public class Room
             players.Add((player.Id, player.X, player.Y, player.DownAt));
         }
 
-        foreach (var (id, at) in ShotJudge.Judge(due, players, ArenaMap.Fixed))
+        foreach (var outcome in ShotJudge.Judge(due, players, ArenaMap.Fixed))
         {
-            var target = _players.Find(p => p.Id == id)!;
-            target.Pose = Pose.Down;
-            target.DownAt = at;
-            messages.Add(new EliminatedMessage(id));
+            // 쏜 사람이 판정 전에 나갔으면 받을 사람이 없어 아무에게도 안 감 (TickLoop.MessagesFor)
+            messages.Add(new Direct(outcome.ShooterId, new ShotResultMessage(outcome)));
+            if (outcome.Down)
+            {
+                var target = _players.Find(p => p.Id == outcome.TargetId)!;
+                target.Pose = Pose.Down;
+                target.DownAt = outcome.At;
+                messages.Add(new EliminatedMessage(target.Id));
+            }
         }
         return messages;
     }

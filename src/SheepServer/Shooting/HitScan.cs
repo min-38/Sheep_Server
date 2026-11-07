@@ -5,21 +5,36 @@ namespace SheepServer.Shooting;
 // 명중 판정 규칙 (기술 설계서 명중 판정). 방과 시계를 모르고 위치와 맵만 받아 테스트에서 바로 부를 수 있음
 public static class HitScan
 {
-    // 칸. 사람을 이 반지름의 원으로 봄 (시스템 기획서 리볼버). ponytail: 임시 값. 플레이해 보며 정함
-    public const double Radius = 0.25;
+    // 칸. 사람을 몸과 머리 두 원기둥으로 봄. 모자는 판정에 넣지 않음 (시스템 기획서 리볼버, 블록 캐릭터 비율 SHEEP-47).
+    // 클라의 사격 결과 카드(SHEEP-62)도 이 값으로 총알 구멍을 찍음. ponytail: 임시 값. 플레이해 보며 정함
+    public const double EyeHeight = 0.5;
+    public const double BodyRadius = 0.23;
+    public const double BodyTop = 0.68;
+    public const double HeadRadius = 0.11;
+    public const double HeadTop = 0.9;
 
     // 칸. 벽을 찾을 때 광선을 따라 이만큼씩 나아감.
     // ponytail: 벽까지 거리가 이만큼 틀릴 수 있음. 벽에 붙은 사람의 판정이 어긋나면 클라 raycast.ts의 castRay(DDA)를 옮겨 옴
     private const double Step = 0.01;
 
-    // (x, y)에서 angle 쪽으로 쏜 광선이 벽보다 먼저 닿는 첫 번째 사람. 없으면 null.
-    // targets에는 쏜 사람과 쓰러진 사람을 빼고 넘김. 각도는 turn과 같음 (0은 +x, π/2는 +y)
-    public static Guid? FirstHit(double x, double y, double angle, IEnumerable<(Guid Id, double X, double Y)> targets, ArenaMap map)
+    // 원기둥 하나. 바닥 높이 Bottom부터 Top까지
+    private static readonly (HitZone Zone, double Radius, double Bottom, double Top)[] Parts =
+    [
+        (HitZone.Body, BodyRadius, 0, BodyTop),
+        (HitZone.Head, HeadRadius, BodyTop, HeadTop),
+    ];
+
+    // (x, y)의 눈높이에서 angle 쪽으로, 위아래 pitch만큼 기울여 쏜 광선이 벽보다 먼저 닿는 첫 번째 사람. 없으면 null.
+    // targets에는 쏜 사람과 쓰러진 사람을 빼고 넘김. 각도는 turn과 같음 (0은 +x, π/2는 +y). pitch는 위가 +
+    public static ScanHit? FirstHit(double x, double y, double angle, double pitch, IEnumerable<(Guid Id, double X, double Y)> targets, ArenaMap map)
     {
         double dx = Math.Cos(angle);
         double dy = Math.Sin(angle);
 
-        Guid? hit = null;
+        // 광선 높이는 수평으로 간 거리에 tan(pitch)를 곱한 만큼 바뀜. 클라 render.ts의 horizonY와 같은 식이라 조준점과 맞음
+        double rise = Math.Tan(pitch);
+
+        ScanHit? hit = null;
         double nearest = WallDistance(x, y, dx, dy, map);
         foreach (var target in targets)
         {
@@ -29,18 +44,29 @@ public static class HitScan
             double along = wx * dx + wy * dy;
             double side2 = wx * wx + wy * wy - along * along;
 
-            // 등 뒤에 있거나 옆으로 반지름보다 멀면 빗나감
-            if (along <= 0 || side2 > Radius * Radius)
+            foreach (var part in Parts)
             {
-                continue;
-            }
+                // 등 뒤에 있거나 옆으로 반지름보다 멀면 빗나감
+                if (along <= 0 || side2 > part.Radius * part.Radius)
+                {
+                    continue;
+                }
 
-            // 원의 가장자리에 처음 닿는 거리. 목록 순서가 아니라 가장 가까운 사람이 맞음
-            double distance = along - Math.Sqrt(Radius * Radius - side2);
-            if (distance < nearest)
-            {
-                hit = target.Id;
-                nearest = distance;
+                // 원기둥 옆면에 처음 닿는 수평 거리와 그때 광선 높이. 그 높이가 이 원기둥 안이면 맞음.
+                // ponytail: 옆면만 봄. 위에서 내려와 머리 뚜껑이나 몸 윗면으로 들어가는 광선은 빗나감으로 침. 판정이 어색하면 뚜껑도 봄
+                double distance = along - Math.Sqrt(part.Radius * part.Radius - side2);
+                double height = EyeHeight + distance * rise;
+                if (height < part.Bottom || height > part.Top)
+                {
+                    continue;
+                }
+
+                // 목록 순서가 아니라 가장 가까운 것이 맞음. (−dy, dx)가 쏜 사람의 오른쪽이고, 맞은 자리는 광선 위라 중심의 반대쪽으로 떨어져 있음
+                if (distance < nearest)
+                {
+                    hit = new ScanHit(target.Id, part.Zone, height, -(wx * -dy + wy * dx));
+                    nearest = distance;
+                }
             }
         }
         return hit;

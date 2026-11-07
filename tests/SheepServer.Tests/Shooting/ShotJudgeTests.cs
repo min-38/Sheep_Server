@@ -50,16 +50,17 @@ public class ShotJudgeTests
         // b의 발사가 먼저 도착했지만 a가 D보다 더 먼저 쐈음. 목록은 도착 순서
         var shots = new[]
         {
-            new Shot(_b, Math.PI, 100 + ShotJudge.MutualWindow + 1),
-            new Shot(_a, 0, 100),
+            new Shot(_b, Math.PI, 0, 100 + ShotJudge.MutualWindow + 1),
+            new Shot(_a, 0, 0, 100),
         };
 
         // Act
-        var hits = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
 
         // Assert
-        // a가 먼저 맞힘. b는 맞고 D가 지난 뒤에 쏘아 그 발사는 무효
-        Assert.Equal(new[] { (_b, 100.0) }, hits);
+        // a가 먼저 맞힘. b는 맞고 D가 지난 뒤에 쏘아 그 발사는 무효라 결과에도 없음
+        Assert.Equal(new[] { (_b, 100.0) }, Downs(outcomes));
+        Assert.Equal(_a, Assert.Single(outcomes).ShooterId);
     }
 
     [Fact]
@@ -68,16 +69,16 @@ public class ShotJudgeTests
         // Arrange
         var shots = new[]
         {
-            new Shot(_b, Math.PI, 100 + ShotJudge.MutualWindow),
-            new Shot(_a, 0, 100),
+            new Shot(_b, Math.PI, 0, 100 + ShotJudge.MutualWindow),
+            new Shot(_a, 0, 0, 100),
         };
 
         // Act
-        var hits = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
 
         // Assert
         // b는 맞은 뒤 D 안에 쏘아 그 발사도 유효함. 둘 다 쓰러지고 맞은 시각은 맞힌 발사의 쏜 시각
-        Assert.Equal(new[] { (_b, 100.0), (_a, 100 + ShotJudge.MutualWindow) }, hits);
+        Assert.Equal(new[] { (_b, 100.0), (_a, 100 + ShotJudge.MutualWindow) }, Downs(outcomes));
     }
 
     [Theory]
@@ -90,16 +91,16 @@ public class ShotJudgeTests
         var players = new List<(Guid Id, double X, double Y, double? DownAt)> { (_a, 6.5, 10.5, 0), (_b, 14.5, 10.5, null) };
 
         // Act
-        var hits = ShotJudge.Judge([new Shot(_a, 0, shotAt)], players, ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, 0, shotAt)], players, ArenaMap.Fixed);
 
         // Assert
         if (hit)
         {
-            Assert.Equal(new[] { (_b, shotAt) }, hits);
+            Assert.Equal(new[] { (_b, shotAt) }, Downs(outcomes));
         }
         else
         {
-            Assert.Empty(hits);
+            Assert.Empty(outcomes);
         }
     }
 
@@ -111,10 +112,10 @@ public class ShotJudgeTests
         var players = new List<(Guid Id, double X, double Y, double? DownAt)> { (_a, 6.5, 10.5, null), (_b, 10.5, 10.5, 50), (_c, 14.5, 10.5, null) };
 
         // Act
-        var hits = ShotJudge.Judge([new Shot(_a, 0, 100)], players, ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, 0, 100)], players, ArenaMap.Fixed);
 
         // Assert
-        Assert.Equal(new[] { (_c, 100.0) }, hits);
+        Assert.Equal(new[] { (_c, 100.0) }, Downs(outcomes));
     }
 
     [Fact]
@@ -122,11 +123,45 @@ public class ShotJudgeTests
     {
         // Act
         // 판정 전에 나간 사람의 발사는 버림 (기술 설계서 메시지 fire)
-        var hits = ShotJudge.Judge([new Shot(_c, 0, 100)], Duelists(), ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge([new Shot(_c, 0, 0, 100)], Duelists(), ArenaMap.Fixed);
 
         // Assert
-        Assert.Empty(hits);
+        Assert.Empty(outcomes);
     }
+
+    [Fact]
+    public void Judge_Miss_OutcomeWithoutTarget()
+    {
+        // Act
+        // a가 b 반대쪽(-x)으로 쏨. 빗나간 발사도 쏜 사람에게 알려야 해서 결과에 들어감
+        var outcomes = ShotJudge.Judge([new Shot(_a, Math.PI, 0, 100)], Duelists(), ArenaMap.Fixed);
+
+        // Assert
+        var outcome = Assert.Single(outcomes);
+        Assert.Equal(_a, outcome.ShooterId);
+        Assert.Equal(100, outcome.At);
+        Assert.Null(outcome.TargetId);
+        Assert.Null(outcome.Zone);
+        Assert.False(outcome.Down);
+    }
+
+    [Fact]
+    public void Judge_BodyHit_Down()
+    {
+        // Act
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, 0, 100)], Duelists(), ArenaMap.Fixed);
+
+        // Assert
+        // 반샷은 아직 없음(SHEEP-61). 맞으면 어디든 쓰러짐
+        var outcome = Assert.Single(outcomes);
+        Assert.Equal(_b, outcome.TargetId);
+        Assert.Equal(HitZone.Body, outcome.Zone);
+        Assert.True(outcome.Down);
+    }
+
+    // 쓰러뜨린 결과만 (맞은 사람, 맞은 시각)으로. 맞은 시각은 맞힌 발사의 쏜 시각
+    private static IEnumerable<(Guid Id, double At)> Downs(List<ShotOutcome> outcomes) =>
+        outcomes.Where(o => o.Down).Select(o => (o.TargetId!.Value, o.At));
 
     private List<(Guid Id, double X, double Y, double? DownAt)> Duelists() => [(_a, 6.5, 10.5, null), (_b, 14.5, 10.5, null)];
 }

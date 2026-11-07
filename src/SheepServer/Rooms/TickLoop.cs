@@ -18,6 +18,22 @@ public class TickLoop
         _logger = logger;
     }
 
+    // playerId에게 보낼 메시지만 순서대로 냄. 다른 사람에게 갈 Direct는 건너뛰고, 내게 온 Direct는 봉투를 벗겨 안의 메시지만 냄
+    public static IEnumerable<object> MessagesFor(Guid playerId, IEnumerable<object> messages)
+    {
+        foreach (var message in messages)
+        {
+            if (message is not Direct direct)
+            {
+                yield return message;
+            }
+            else if (direct.To == playerId)
+            {
+                yield return direct.Message;
+            }
+        }
+    }
+
     // 토큰이 취소될 때까지 끝나지 않음
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -39,11 +55,11 @@ public class TickLoop
 
                 // 기술 설계서: 틱마다 방 안 모두에게 상태를 보냄. 판 단계 알림이 있으면 state보다 먼저 감.
                 // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 방의 틱을 늦출 수 있음. 7명·로컬에선 괜찮고, 문제가 되면 연결마다 보낼 큐를 둠
-                foreach (var send in _room.GetSenders())
+                foreach (var (id, send) in _room.GetSenders())
                 {
                     try
                     {
-                        foreach (var message in messages)
+                        foreach (var message in MessagesFor(id, messages))
                         {
                             await send(message);
                         }
