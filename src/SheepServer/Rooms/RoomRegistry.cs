@@ -105,6 +105,22 @@ public class RoomRegistry
         }
     }
 
+    // 대기실 보기의 공개 방 목록 (시스템 기획서 방 화면 대기실 보기). 비공개 방은 넣지 않음.
+    // 들어갈 수 있는 방(판 도중 아님, 꽉 차지 않음)을 위에, 그 안에서는 사람이 많은 방부터, 같으면 코드 순
+    public List<RoomSummary> List()
+    {
+        lock (_rooms)
+        {
+            return _rooms.Values
+                .Where(r => !r.IsPrivate)
+                .Select(r => r.Summarize())
+                .OrderByDescending(s => !s.Playing && s.Players.Count < s.Max)
+                .ThenByDescending(s => s.Players.Count)
+                .ThenBy(s => s.Code, StringComparer.Ordinal)
+                .ToList();
+        }
+    }
+
     public bool LeaveRoom(string? roomId, Guid playerId)
     {
         lock (_rooms)

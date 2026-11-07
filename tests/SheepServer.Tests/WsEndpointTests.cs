@@ -79,6 +79,26 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task ListRooms_BeforeJoining_Rooms()
+    {
+        using var host = await Connect();
+        using var browser = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+
+        // 방에 들어가기 전에도 보낼 수 있음 (기술 설계서 메시지 listRooms)
+        var reply = await Request(browser, """{"type":"listRooms"}""");
+
+        Assert.Equal("rooms", reply.GetProperty("type").GetString());
+        var room = reply.GetProperty("rooms").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code);
+        var player = Assert.Single(room.GetProperty("players").EnumerateArray());
+        Assert.Equal("보안관", player.GetProperty("nickname").GetString());
+        Assert.Equal(0, player.GetProperty("color").GetInt32());
+        Assert.Equal(8, room.GetProperty("max").GetInt32());
+        Assert.False(room.GetProperty("playing").GetBoolean());
+    }
+
+    [Fact]
     public async Task QuickJoin_ReplyThenMap()
     {
         using var ws = await Connect();

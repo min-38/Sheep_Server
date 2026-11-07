@@ -405,6 +405,20 @@ public class Room
         }
     }
 
+    // 방 목록에 실을 지금 모습. 들어온 순서대로 사람마다 닉네임과 색 (기술 설계서 메시지 rooms)
+    public RoomSummary Summarize()
+    {
+        lock (_lock)
+        {
+            var members = new List<RoomMember>();
+            foreach (var player in _players)
+            {
+                members.Add(new RoomMember(player.Nickname, player.Color));
+            }
+            return new RoomSummary(_roomId, members, _maxPlayers, InRound);
+        }
+    }
+
     // 복사해서 돌려줌. 보내기는 await라 lock 밖에서 해야 하고, 그동안 입장과 퇴장이 목록을 바꿔도 됨.
     // id도 같이 줘서 한 사람에게만 갈 메시지(Direct)를 그 사람에게만 보냄
     public List<(Guid Id, Func<object, Task> Send)> GetSenders()
