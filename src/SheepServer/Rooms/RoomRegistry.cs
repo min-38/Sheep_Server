@@ -44,9 +44,9 @@ public class RoomRegistry
                 throw new ArgumentException("MaxPlayers must be greater than 0.");
             }
 
-            if (maxPlayers > 7)
+            if (maxPlayers > 8)
             {
-                throw new ArgumentException("MaxPlayers must be less than or equal to 7.");
+                throw new ArgumentException("MaxPlayers must be less than or equal to 8.");
             }
 
             Room newRoom = new Room(roomId, maxPlayers);
