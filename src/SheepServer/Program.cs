@@ -38,23 +38,32 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     var playerId = Guid.NewGuid();
     string? roomId = null;
 
-    // 받기 루프의 답과 틱 루프의 state가 같은 소켓으로 나감. 보내기가 겹치면 WebSocket이 던져서 한 번에 하나씩 보냄
-    var sendLock = new SemaphoreSlim(1, 1);
-    async Task SendLocked(object message)
+    // 받기 루프의 답, 틱 루프의 state, 다른 사람이 쏜 shot이 모두 이 큐를 거쳐 같은 소켓으로 나감.
+    // 한도를 넘게 밀리면 연결을 끊어 받기 루프가 끝나고, 아래 finally에서 방을 나감 (기술 설계서 아키텍처)
+    var queue = new SendQueue(message => Send(ws, message, ct).AsTask(), ws.Abort);
+    var sending = SendAll();
+    async Task SendAll()
     {
-        await sendLock.WaitAsync(ct);
         try
         {
-            await Send(ws, message, ct);
+            await queue.RunAsync(ct);
         }
-        finally
+        // 보내다 끊기면 받기 루프도 끝나게 끊음. 그래야 방을 나감
+        catch (Exception ex)
         {
-            sendLock.Release();
+            logger.LogDebug(ex, "Send failed {ConnectionId}", id);
+            ws.Abort();
         }
     }
 
-    // 방 안 모두에게 메시지들을 순서대로 보냄. TickLoop과 같은 방식.
-    // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 쏜 사람의 받기 루프를 늦출 수 있음. TickLoop과 같은 한계이고, 문제가 되면 연결마다 보낼 큐를 둠
+    // 방은 보내기를 Func<object, Task>로 받음. 큐에 넣기만 하고 바로 끝나, 방의 틱과 다른 사람의 받기 루프가 이 연결을 기다리지 않음
+    Task Enqueue(object message)
+    {
+        queue.Enqueue(message);
+        return Task.CompletedTask;
+    }
+
+    // 방 안 모두의 큐에 메시지들을 순서대로 넣음. TickLoop과 같은 방식
     async Task Broadcast(Room room, List<object> messages)
     {
         foreach (var (to, send) in room.GetSenders())
@@ -121,7 +130,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked, hostName, isPrivate);
+                    roomId = registry.AddRoom(playerId, MaxPlayers, Enqueue, hostName, isPrivate);
                     return [new { type = "roomCreated", code = roomId, playerId }, mapMessage];
 
                 case "joinRoom":
@@ -135,7 +144,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "joined", code, playerId }, mapMessage];
                     }
-                    switch (registry.JoinRoom(code, playerId, SendLocked, guestName))
+                    switch (registry.JoinRoom(code, playerId, Enqueue, guestName))
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
@@ -157,7 +166,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     // 먼저 나감. 그러지 않으면 내가 있는 방을 골라 같은 방에 같은 사람이 둘 들어감
                     registry.LeaveRoom(roomId, playerId);
-                    var (quickCode, created) = registry.QuickJoin(playerId, MaxPlayers, SendLocked, quickName);
+                    var (quickCode, created) = registry.QuickJoin(playerId, MaxPlayers, Enqueue, quickName);
                     roomId = quickCode;
                     return [new { type = created ? "roomCreated" : "joined", code = quickCode, playerId }, mapMessage];
 
@@ -226,9 +235,12 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         {
             foreach (var reply in await Handle(text))
             {
-                await SendLocked(reply);
+                queue.Enqueue(reply);
             }
         }
+        // 남은 답을 마저 보낸 뒤에 닫아 보내기와 닫기가 겹치지 않게 함
+        queue.Complete();
+        await sending;
         // 클라가 닫자고 했으면 닫기 응답을 보냄. 메시지가 너무 커서 서버가 먼저 닫았으면 이미 보냈음
         if (ws.State == WebSocketState.CloseReceived)
         {
@@ -236,7 +248,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         }
         logger.LogInformation("WebSocket closed {ConnectionId}", id);
     }
-    // 클라가 close 프레임 없이 끊으면 여기로 옴. 요청 하나의 끝일 뿐이라 로그만 남김
+    // 클라가 close 프레임 없이 끊거나 보낼 큐가 넘쳐 서버가 끊으면 여기로 옴. 요청 하나의 끝일 뿐이라 로그만 남김
     catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
     {
         logger.LogInformation("WebSocket dropped {ConnectionId}", id);
@@ -245,6 +257,9 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     {
         // 정상 종료든 끊김이든 방에서 빠짐. 마지막 사람이면 방도 지워짐
         registry.LeaveRoom(roomId, playerId);
+        // 보내는 작업이 소켓을 놓은 뒤에 소켓이 정리되게 기다림. 끊긴 소켓이면 SendAll이 던지지 않고 바로 끝남
+        queue.Complete();
+        await sending;
     }
 });
 

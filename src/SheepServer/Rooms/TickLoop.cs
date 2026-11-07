@@ -54,7 +54,7 @@ public class TickLoop
                 }
 
                 // 기술 설계서: 틱마다 방 안 모두에게 상태를 보냄. 판 단계 알림이 있으면 state보다 먼저 감.
-                // ponytail: 한 명씩 기다리며 보내 느린 연결 하나가 방의 틱을 늦출 수 있음. 7명·로컬에선 괜찮고, 문제가 되면 연결마다 보낼 큐를 둠
+                // 연결마다 보낼 큐(SendQueue)에 넣기만 해, 느린 연결 하나가 방의 틱을 늦추지 않음
                 foreach (var (id, send) in _room.GetSenders())
                 {
                     try
