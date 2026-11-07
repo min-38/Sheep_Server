@@ -29,4 +29,10 @@ public class Player
 
     // 마지막으로 받아들인 발사의 쏜 시각(ms, 서버 시계). 아직 안 쐈으면 null
     public double? LastShotAt { get; set; }
+
+    // 맞은 반샷 수. 몸을 맞으면 늘고 ShotJudge.WoundsToDown에 닿으면 쓰러짐. 판이 끝날 때까지 남음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
+    public int Wounds { get; set; }
+
+    // 이번 라운드 걷기가 시작할 때의 반샷 수. 함께 쓰러져 다음 라운드로 가는 사람은 이 값으로 되돌림 (컨셉 기획서 규칙 함께 쓰러짐)
+    public int RoundStartWounds { get; set; }
 }
