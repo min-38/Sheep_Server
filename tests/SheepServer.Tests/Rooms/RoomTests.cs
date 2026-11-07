@@ -1374,6 +1374,69 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_Win_WinnerWinsUp()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double hitAt = duelAt + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
+        var hit = StateAt(hitAt + ShotJudge.MaxDelay);
+
+        // Act
+        var decided = StateAt(hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow);
+
+        // Assert
+        // 승리를 정한 틱의 state부터 이긴 사람만 1 오름. 클라는 이 값 × $100을 현상금으로 적음 (시스템 기획서 방 화면 현상금)
+        Assert.Equal(0, Find(hit, _a).Wins);
+        Assert.Equal(1, Find(decided, _a).Wins);
+        Assert.Equal(0, Find(decided, _b).Wins);
+    }
+
+    [Fact]
+    public void Step_Rematch_WinsUnchanged()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double shotAt = duelAt + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
+        _room.Step(shotAt + ShotJudge.MaxDelay);
+
+        // Act
+        var messages = _room.Step(shotAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow);
+
+        // Assert
+        // 함께 쓰러져 다음 라운드로 감. 판이 끝나지 않아 아무도 오르지 않음
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
+        var state = messages.OfType<StateMessage>().Single();
+        Assert.Equal(0, Find(state, _a).Wins);
+        Assert.Equal(0, Find(state, _b).Wins);
+    }
+
+    [Fact]
+    public void RemovePlayer_WinnerRejoins_WinsBackToZero()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double hitAt = duelAt + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
+        _room.Step(hitAt + ShotJudge.MaxDelay);
+        double decidedAt = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        _room.Step(decidedAt);
+        var lobby = StateAt(decidedAt + RoundFlow.ResultDuration); // 준비 중으로 돌아감
+
+        // Act
+        _room.RemovePlayer(_a);
+        _room.AddPlayer(_a);
+        var rejoined = StateAt(decidedAt + RoundFlow.ResultDuration + 50);
+
+        // Assert
+        // 판이 끝나도 방에 있는 동안은 남고, 나가면 사라짐. 계정이 없어 저장하지 않음 (시스템 기획서 방 화면 현상금)
+        Assert.Equal(1, Find(lobby, _a).Wins);
+        Assert.Equal(0, Find(rejoined, _a).Wins);
+    }
+
+    [Fact]
     public void Fire_AfterResult_Ignored()
     {
         // Arrange
