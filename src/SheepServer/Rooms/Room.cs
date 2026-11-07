@@ -8,6 +8,9 @@ namespace SheepServer.Rooms;
 
 public class Room
 {
+    // 위아래 시선의 한계(라디안). 클라 turn.ts의 MAX_PITCH와 같아야 함 (시스템 기획서 조작 위아래 보기)
+    public const double MaxPitch = 0.5;
+
     private static readonly double CenterX = ArenaMap.Fixed.Width / 2.0;
     private static readonly double CenterY = ArenaMap.Fixed.Height / 2.0;
 
@@ -151,7 +154,8 @@ public class Room
         }
     }
 
-    public void SetAngle(Guid playerId, double angle)
+    // pitch는 위아래 시선(라디안, 위가 +). 보내지 않은 클라는 null이고 그때는 그대로 둠
+    public void SetAngle(Guid playerId, double angle, double? pitch = null)
     {
         lock (_lock)
         {
@@ -166,6 +170,12 @@ public class Room
             if (player != null)
             {
                 player.Angle = angle;
+
+                // 범위 밖이거나 숫자가 아니면 위아래 시선만 버림. NaN은 비교가 늘 false라 여기서 걸러짐
+                if (pitch is double p && Math.Abs(p) <= MaxPitch)
+                {
+                    player.Pitch = p;
+                }
             }
         }
     }
@@ -403,7 +413,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -450,6 +460,7 @@ public class Room
             player.Y = spot.Y;
             player.Angle = spot.Angle;
             player.Pose = Pose.Stand;
+            player.Pitch = 0; // 다시 서면 정면을 봄 (시스템 기획서 조작 위아래 보기)
             player.DownAt = null;
             player.Ammo = rounds;
             player.LastShotAt = null;

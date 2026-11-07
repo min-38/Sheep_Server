@@ -129,6 +129,62 @@ public class RoomTests
         Assert.Equal(1.0, Find(state, _a).Angle, Tolerance);
     }
 
+    // 기술 설계서 메시지 turn: pitch는 위아래 시선. 라디안, 위가 +. -0.5 이상 0.5 이하 (시스템 기획서 조작 위아래 보기)
+    [Theory]
+    [InlineData(0.3)]
+    [InlineData(Room.MaxPitch)]
+    [InlineData(-Room.MaxPitch)]
+    public void SetAngle_Pitch_InState(double pitch)
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        _room.SetAngle(_a, 1.0, pitch);
+        var state = StateAt(0);
+
+        // Assert
+        // 관전하는 사람이 그 사람의 화면을 위아래 시선까지 그리는 데 씀 (기술 설계서 메시지 state)
+        Assert.Equal(pitch, Find(state, _a).Pitch, Tolerance);
+    }
+
+    [Fact]
+    public void SetAngle_NoPitch_KeepsPitch()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.SetAngle(_a, 1.0, 0.3);
+
+        // Act
+        _room.SetAngle(_a, 2.0);
+        var state = StateAt(0);
+
+        // Assert
+        // pitch를 보내지 않는 클라도 돌 수 있음. 그때 위아래 시선은 그대로 둠
+        Assert.Equal(2.0, Find(state, _a).Angle, Tolerance);
+        Assert.Equal(0.3, Find(state, _a).Pitch, Tolerance);
+    }
+
+    [Theory]
+    [InlineData(0.6)]
+    [InlineData(-0.6)]
+    [InlineData(double.NaN)]
+    public void SetAngle_PitchOutOfRange_AngleKept(double pitch)
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.SetAngle(_a, 1.0, 0.3);
+
+        // Act
+        _room.SetAngle(_a, 2.0, pitch);
+        var state = StateAt(0);
+
+        // Assert
+        // 위아래 시선만 버리고 돌기는 받음 (기술 설계서 메시지 turn)
+        Assert.Equal(2.0, Find(state, _a).Angle, Tolerance);
+        Assert.Equal(0.3, Find(state, _a).Pitch, Tolerance);
+    }
+
     [Fact]
     public void AddPlayer_NewcomerNotReady()
     {
@@ -558,6 +614,23 @@ public class RoomTests
         // 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
         AssertFacesOutward(Find(state, _a));
         AssertWalked(2, 0, RoundFlow.WalkDistance * 100 / RoundFlow.WalkDuration, Find(state, _a));
+    }
+
+    [Fact]
+    public void SetAngle_DuringWalk_PitchIgnored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.SetAngle(_a, 1.0, 0.3);
+        var state = StateAt(walkAt + 100);
+
+        // Assert
+        // 카운트다운부터 "시작!" 전까지는 돌기와 같이 버림 (기술 설계서 메시지 turn)
+        Assert.Equal(0, Find(state, _a).Pitch);
     }
 
     [Fact]
@@ -1503,6 +1576,24 @@ public class RoomTests
             Assert.Equal(spot.Angle, player.Angle, Tolerance);
             Assert.Equal(Pose.Stand, player.Pose);
         }
+    }
+
+    [Fact]
+    public void Step_Lobby_PitchReset()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.SetAngle(_a, Math.PI, 0.3);
+        double lobbyAt = AWins(duelAt);
+        var showingResult = StateAt(lobbyAt - 50);
+
+        // Act
+        var state = StateAt(lobbyAt);
+
+        // Assert
+        // 결과를 보는 동안은 그대로이고, 준비 중으로 돌아가 다시 서면 정면을 봄 (시스템 기획서 조작 위아래 보기)
+        Assert.Equal(0.3, Find(showingResult, _a).Pitch, Tolerance);
+        Assert.Equal(0, Find(state, _a).Pitch);
     }
 
     [Fact]

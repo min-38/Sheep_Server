@@ -26,6 +26,11 @@ public class Player
     public double X { get; set; }
     public double Y { get; set; }
     public double Angle { get; set; }
+
+    // 위아래 시선(라디안, 위가 +, -Room.MaxPitch 이상 Room.MaxPitch 이하). 처음과 다시 설 때 0.
+    // 판정에는 쓰지 않고(fire가 쏜 순간의 pitch를 따로 보냄) 관전하는 클라가 화면을 그리는 데만 씀
+    public double Pitch { get; set; }
+
     public Pose Pose { get; set; } = Pose.Stand;
     public bool Ready { get; set; }
 

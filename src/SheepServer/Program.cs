@@ -203,10 +203,12 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     return [new { type = "left" }];
 
                 case "turn":
-                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사는 Room.SetAngle이 함
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사는 Room.SetAngle이 함.
+                    // pitch는 없거나 숫자가 아니면 null로 넘겨 위아래 시선만 그대로 둠. 지금 클라는 보내지 않음
                     if (root.TryGetProperty("angle", out var a) && a.ValueKind == JsonValueKind.Number && a.TryGetDouble(out double angle))
                     {
-                        registry.GetRoomById(roomId)?.SetAngle(playerId, angle);
+                        double? turnPitch = root.TryGetProperty("pitch", out var tp) && tp.ValueKind == JsonValueKind.Number && tp.TryGetDouble(out double tpValue) ? tpValue : null;
+                        registry.GetRoomById(roomId)?.SetAngle(playerId, angle, turnPitch);
                     }
                     return [];
 
