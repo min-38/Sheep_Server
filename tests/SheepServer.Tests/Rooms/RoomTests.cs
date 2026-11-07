@@ -15,6 +15,11 @@ public class RoomTests
     private const double AToC = 7 * Math.PI / 6;
     private const double BToA = 11 * Math.PI / 6;
     private const double CToB = Math.PI / 2;
+    // 넷이 다 걸었을 때 b(1번, +y 쪽)에서 a(0번, +x 쪽)를, c(2번, -x 쪽)에서 d(3번, -y 쪽)를, d에서 c를 겨누는 각도.
+    // 넷은 정사각형을 이뤄 이웃끼리 √2(R + 걸은 거리)만큼 떨어짐
+    private const double SquareBToA = 7 * Math.PI / 4;
+    private const double SquareCToD = 7 * Math.PI / 4;
+    private const double SquareDToC = 3 * Math.PI / 4;
     private static readonly double CenterX = ArenaMap.Fixed.Width / 2.0;
     private static readonly double CenterY = ArenaMap.Fixed.Height / 2.0;
 
@@ -22,6 +27,7 @@ public class RoomTests
     // 위아래 0으로 쏘면 몸에 맞아 반샷이고, 이 각도면 머리에 맞아 바로 쓰러짐 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
     private static readonly double HeadAcross = HeadPitch(2 * (StartPlacement.Radius + RoundFlow.WalkDistance));
     private static readonly double HeadInTriangle = HeadPitch(Math.Sqrt(3) * (StartPlacement.Radius + RoundFlow.WalkDistance));
+    private static readonly double HeadInSquare = HeadPitch(Math.Sqrt(2) * (StartPlacement.Radius + RoundFlow.WalkDistance));
 
     private readonly Room _room = new("TestRoom", 4);
     private readonly Guid _a = Guid.NewGuid();
@@ -1923,6 +1929,166 @@ public class RoomTests
         Assert.Equal(Pose.Stand, Find(messages.OfType<StateMessage>().Single(), _a).Pose);
     }
 
+    [Fact]
+    public void Spectate_Down_ReturnsTargetHud()
+    {
+        // Arrange
+        ADownByB(); // c는 반샷 하나에 아직 쏘지 않아 한 발이 남음
+
+        // Act
+        var spectating = _room.Spectate(_a, _c);
+
+        // Assert
+        // 관전을 시작할 때 그 사람의 혈흔과 실린더를 그대로 그림 (기술 설계서 메시지 spectating)
+        Assert.NotNull(spectating);
+        Assert.Equal(_c, spectating.PlayerId);
+        Assert.Equal(1, spectating.Wounds);
+        Assert.Equal(1, spectating.Ammo);
+    }
+
+    [Fact]
+    public void Spectate_Standing_Ignored()
+    {
+        // Arrange
+        StartDuel();
+
+        // Act
+        var spectating = _room.Spectate(_a, _b);
+
+        // Assert
+        // 서 있는 사람이 관전으로 누가 반샷인지 엿보지 못함 (컨셉 기획서 규칙)
+        Assert.Null(spectating);
+    }
+
+    [Fact]
+    public void Spectate_Lobby_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+        _room.Step(lobbyAt); // 쓰러졌던 b도 준비 중으로 돌아가 다시 섬
+
+        // Act
+        var spectating = _room.Spectate(_b, _a);
+
+        // Assert
+        Assert.Null(spectating);
+    }
+
+    [Fact]
+    public void Spectate_Self_Ignored()
+    {
+        // Arrange
+        ADownByB();
+
+        // Act
+        var spectating = _room.Spectate(_a, _a);
+
+        // Assert
+        Assert.Null(spectating);
+    }
+
+    [Fact]
+    public void Spectate_Unknown_Ignored()
+    {
+        // Arrange
+        ADownByB();
+
+        // Act
+        var unknownTarget = _room.Spectate(_a, Guid.NewGuid());
+        var unknownSpectator = _room.Spectate(Guid.NewGuid(), _c);
+
+        // Assert
+        Assert.Null(unknownTarget);
+        Assert.Null(unknownSpectator);
+    }
+
+    [Fact]
+    public void Step_DirectToTarget_CopiedToSpectatorInOrder()
+    {
+        // Arrange
+        // 넷이 결투해 b가 a의 머리를 맞혀 쓰러뜨리고, 쓰러진 a가 c를 봄. 그다음 c와 d가 서로 몸을 맞힘
+        double duelAt = StartDuelWith(_a, _b, _c, _d);
+        _room.Fire(_b, SquareBToA, HeadInSquare, duelAt + 100, duelAt + 120);
+        double downAt = duelAt + 100 + ShotJudge.MaxDelay;
+        _room.Step(downAt);
+        _room.Spectate(_a, _c);
+        _room.Fire(_c, SquareCToD, 0, downAt + 100, downAt + 120);
+        _room.Fire(_d, SquareDToC, 0, downAt + 150, downAt + 170);
+
+        // Act
+        var messages = _room.Step(downAt + 150 + ShotJudge.MaxDelay);
+
+        // Assert
+        // a는 c가 받는 것을 같은 순서로 받음: c의 사격 결과, c가 맞은 반샷, 그 밖에 모두에게 가는 것 (기술 설계서 메시지 spectate)
+        var watched = TickLoop.MessagesFor(_c, messages).ToList();
+        Assert.Equal(watched, TickLoop.MessagesFor(_a, messages));
+        Assert.IsType<ShotResultMessage>(watched[0]);
+        Assert.IsType<WoundedMessage>(watched[1]);
+    }
+
+    [Fact]
+    public void Spectate_Null_StopsCopies()
+    {
+        // Arrange
+        double now = ADownByB();
+        _room.Spectate(_a, _c);
+
+        // Act
+        var stopped = _room.Spectate(_a, null);
+        _room.Fire(_c, CToB, 0, now + 100, now + 120);
+        var messages = _room.Step(now + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 그만두면 답이 없고 더 받지 않음. c는 그대로 받음
+        Assert.Null(stopped);
+        Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<ShotResultMessage>());
+        Assert.Single(TickLoop.MessagesFor(_c, messages).OfType<ShotResultMessage>());
+    }
+
+    [Fact]
+    public void RemovePlayer_Target_SpectatorsUnwatched()
+    {
+        // Arrange
+        double now = ADownByB();
+        _room.Spectate(_a, _c);
+        _room.Fire(_c, CToB, 0, now + 100, now + 120);
+
+        // Act
+        _room.RemovePlayer(_c);
+        var messages = _room.Step(now + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 대상이 나가도 틱은 이어지고, 나간 사람의 개인 메시지 복사본은 없음
+        Assert.DoesNotContain(TickLoop.MessagesFor(_a, messages), m => m is ShotResultMessage or WoundedMessage);
+    }
+
+    [Fact]
+    public void Spectate_RematchStands_Unwatched()
+    {
+        // Arrange
+        // 둘이 서로 머리를 맞혀 함께 쓰러지고, 쓰러진 a가 쓰러진 b를 봄. 다음 라운드에 둘 다 다시 섬
+        double duelAt = StartDuel();
+        double shotAt = duelAt + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
+        _room.Step(shotAt + ShotJudge.MaxDelay);
+        var spectating = _room.Spectate(_a, _b);
+        double decided = shotAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        _room.Step(decided);
+        double next = StartNextRound(decided + RoundFlow.ResultDuration);
+
+        // Act
+        _room.Fire(_b, Math.PI, 0, next + 100, next + 120); // b는 -x 쪽 바깥으로 쏨
+        var messages = _room.Step(next + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 쓰러진 사람도 볼 수 있지만, 다시 서면 관전이 풀려 서 있는 동안 b의 사격 결과를 받지 않음
+        Assert.NotNull(spectating);
+        Assert.Single(TickLoop.MessagesFor(_b, messages).OfType<ShotResultMessage>());
+        Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<ShotResultMessage>());
+    }
+
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
 
     // distance만큼 떨어진 사람의 머리 가운데를 겨누는 위아래 각도. 머리 옆면(앞으로 distance - HeadRadius)에서 눈높이보다 머리 가운데만큼 위
@@ -2064,5 +2230,17 @@ public class RoomTests
         double now = duelAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(now); // c가 맞고 W + D가 지나 다음 라운드가 정해짐
         return now + RoundFlow.ResultDuration;
+    }
+
+    // 셋이 결투해 a가 c의 몸을 맞히고 b가 a의 머리를 맞히게 하고, 둘을 판정한 틱의 시각을 돌려줌.
+    // a는 쓰러지고, b는 총알이 없고, c는 반샷 하나에 한 발이 남아 결투가 이어짐
+    private double ADownByB()
+    {
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, AToC, 0, duelAt + 100, duelAt + 120);
+        _room.Fire(_b, BToA, HeadInTriangle, duelAt + 150, duelAt + 170);
+        double now = duelAt + 150 + ShotJudge.MaxDelay;
+        _room.Step(now);
+        return now;
     }
 }

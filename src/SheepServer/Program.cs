@@ -240,6 +240,20 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
+                case "spectate":
+                    // playerId가 id 문자열이면 그 사람을 보고, null이면 관전을 그만둠. 그 밖은 버림. 받는 조건은 Room.Spectate가 봄.
+                    // TryGetGuid는 문자열이 아니면 던지므로 종류를 먼저 봄
+                    if (root.TryGetProperty("playerId", out var watch)
+                        && (watch.ValueKind == JsonValueKind.Null || (watch.ValueKind == JsonValueKind.String && watch.TryGetGuid(out _))))
+                    {
+                        Guid? watchId = watch.ValueKind == JsonValueKind.Null ? null : watch.GetGuid();
+                        if (registry.GetRoomById(roomId)?.Spectate(playerId, watchId) is SpectatingMessage spectating)
+                        {
+                            return [spectating];
+                        }
+                    }
+                    return [];
+
                 case "clockSync":
                     // 클라가 보낸 시각을 그대로 돌려줌. 클라가 시각을 찍어 보내는 순간과 서버가 받는 순간 사이에 네트워크 지연이 있음
                     // 1e400 같은 값은 무한대가 돼 답을 JSON으로 만들 때 던지므로 IsFinite까지 봄

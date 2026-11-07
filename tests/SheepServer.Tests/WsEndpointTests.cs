@@ -700,6 +700,30 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal("countdown", countdown.GetProperty("phase").GetString());
     }
 
+    // 실제 판을 끝까지 돌려 "시작!"을 기다리므로 7~9초 걸림
+    [Fact]
+    public async Task Spectate_Down_SpectatingStandingNoReply()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
+        await ReceiveWhere(guest, m => IsType(m, "eliminated"));
+
+        // 쓰러진 guest는 host를 볼 수 있음. 답에 host의 지금 반샷 수와 남은 총알이 옴 (기술 설계서 메시지 spectating)
+        await Send(guest, $$"""{"type":"spectate","playerId":"{{hostId}}"}""");
+        var spectating = await ReceiveWhere(guest, m => IsType(m, "spectating"));
+        Assert.Equal(hostId, spectating.GetProperty("playerId").GetString());
+        Assert.Equal(0, spectating.GetProperty("wounds").GetInt32());
+        Assert.Equal(Revolver.Capacity - 1, spectating.GetProperty("ammo").GetInt32());
+
+        // 서 있는 host의 spectate에는 답이 없음. 뒤에 보낸 clockSync의 답이 먼저 옴
+        await Send(host, $$"""{"type":"spectate","playerId":"{{guestId}}"}""");
+        await Send(host, """{"type":"clockSync","t0":7}""");
+        var reply = await ReceiveWhere(host, m => IsType(m, "spectating") || IsType(m, "serverTime"));
+        Assert.Equal("serverTime", reply.GetProperty("type").GetString());
+    }
+
     [Fact]
     public async Task Ws_NonWebSocketRequest_Returns400()
     {

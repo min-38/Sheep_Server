@@ -20,6 +20,10 @@ public class Room
     // 플레이어마다 메시지(state, phase)를 보내는 방법. 연결은 Program.cs가 갖고 있고 TickLoop은 이것만 부름
     private readonly Dictionary<Guid, Func<object, Task>> _senders = new();
 
+    // 쓰러진 관전자 → 그 사람이 보는 대상. 대상에게만 가는 메시지를 관전자에게도 복사함 (기술 설계서 메시지 spectate).
+    // 한 사람은 한 대상만 봄
+    private readonly Dictionary<Guid, Guid> _watching = new();
+
     private int _maxPlayers;
     private int _currentPlayers;
     private List<Player> _players;
@@ -141,6 +145,17 @@ public class Room
                 _currentPlayers--;
                 _players.Remove(player);
                 _senders.Remove(playerId);
+
+                // 나간 사람이 보던 것과 나간 사람을 보던 것을 지움. .NET Core 3.0부터 Dictionary는 도는 중에 Remove해도 됨
+                _watching.Remove(playerId);
+                foreach (var (spectator, target) in _watching)
+                {
+                    if (target == playerId)
+                    {
+                        _watching.Remove(spectator);
+                    }
+                }
+
                 // 판 도중에 다시 세우면 남은 사람의 자리가 바뀜. 나간 사람만 빠짐
                 if (!InRound)
                 {
@@ -280,6 +295,31 @@ public class Room
             _pending.Add(new Shot(playerId, angle, pitch, at));
             messages.Add(new ShotMessage(playerId, angle));
             return messages;
+        }
+    }
+
+    // 쓰러진 사람이 볼 사람을 고름. 받으면 대상의 지금 반샷 수와 남은 총알을 담은 답을, 버리거나 그만두면(targetId가 null) null을 돌려줌
+    // (기술 설계서 메시지 spectate). 서 있는 사람은 받지 않아 누가 반샷인지 새지 않음. 쓰러진 사람은 판 도중에만 있어 판 도중인지는 따로 보지 않음
+    public SpectatingMessage? Spectate(Guid spectatorId, Guid? targetId)
+    {
+        lock (_lock)
+        {
+            if (targetId == null)
+            {
+                _watching.Remove(spectatorId);
+                return null;
+            }
+
+            // 대상이 쓰러져 있어도 받음. 다시 보기와 마지막 장면 보기에 씀
+            var spectator = _players.Find(p => p.Id == spectatorId);
+            var target = _players.Find(p => p.Id == targetId);
+            if (spectator == null || spectator.Pose != Pose.Down || target == null || target == spectator)
+            {
+                return null;
+            }
+
+            _watching[spectatorId] = target.Id;
+            return new SpectatingMessage(target.Id, target.Wounds, target.Ammo);
         }
     }
 
@@ -449,8 +489,8 @@ public class Room
         }
     }
 
-    // players를 그 인원수로 시작 배치에 세우고 rounds발을 장전함. 판이 끝나 준비 중으로 돌아갈 때와 재대결 카운트다운에 씀
-    private static void PlaceAtStart(List<Player> players, int rounds)
+    // players를 그 인원수로 시작 배치에 세우고 rounds발을 장전함. 판이 끝나 준비 중으로 돌아갈 때와 재대결 카운트다운에 씀. lock 안에서 부름
+    private void PlaceAtStart(List<Player> players, int rounds)
     {
         for (int i = 0; i < players.Count; i++)
         {
@@ -467,11 +507,14 @@ public class Room
 
             // 걷기가 시작하는 틱이 아니라 여기서 지움. 걷기 시각과 그 틱 사이에 온 stop이 지워지지 않게 함
             player.StopDistance = null;
+
+            // 다시 선 사람은 관전이 풀림. 서 있는 동안 누가 반샷인지 받지 않게 함
+            _watching.Remove(player.Id);
         }
     }
 
     // 판정할 차례가 된 발사를 판정해 맞은 사람에게 반샷을 더하거나 쓰러뜨림. 쏜 사람에게만 갈 사격 결과,
-    // 쓰러지지 않은 맞은 사람에게만 갈 반샷 알림, 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
+    // 쓰러지지 않은 맞은 사람에게만 갈 반샷 알림(둘 다 그 사람을 보는 관전자에게도 감), 모두에게 갈 탈락 알림을 돌려줌. lock 안에서 부름
     private List<object> JudgeShots(double now)
     {
         var messages = new List<object>();
@@ -491,7 +534,7 @@ public class Room
         foreach (var outcome in ShotJudge.Judge(due, players, ArenaMap.Fixed))
         {
             // 쏜 사람이 판정 전에 나갔으면 받을 사람이 없어 아무에게도 안 감 (TickLoop.MessagesFor)
-            messages.Add(new Direct(outcome.ShooterId, new ShotResultMessage(outcome)));
+            AddDirect(messages, outcome.ShooterId, new ShotResultMessage(outcome));
             if (outcome.TargetId == null)
             {
                 continue;
@@ -511,7 +554,7 @@ public class Room
             }
             else
             {
-                messages.Add(new Direct(target.Id, new WoundedMessage()));
+                AddDirect(messages, target.Id, new WoundedMessage());
             }
         }
         return messages;
@@ -621,6 +664,19 @@ public class Room
         messages.Add(result);
         messages.Add(new PhaseMessage(next, _round.NextAt));
         return messages;
+    }
+
+    // to에게만 갈 메시지를 담고, to를 보는 관전자에게도 바로 뒤에 같은 메시지를 담음. 그래서 관전자는 대상과 같은 순서로 받음. lock 안에서 부름
+    private void AddDirect(List<object> messages, Guid to, object message)
+    {
+        messages.Add(new Direct(to, message));
+        foreach (var (spectator, target) in _watching)
+        {
+            if (target == to)
+            {
+                messages.Add(new Direct(spectator, message));
+            }
+        }
     }
 
     // 지금 방에 있는 사람이 쓰지 않는 가장 작은 색 번호. 나간 사람의 색은 비워 두고 다음 사람에게 줌 (컨셉 기획서 사람 구별).
