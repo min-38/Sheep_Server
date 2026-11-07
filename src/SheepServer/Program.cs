@@ -116,9 +116,12 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "nickname" }];
                     }
+                    // private가 true일 때만 비공개 방. 없거나 다른 값이면 공개 방
+                    bool isPrivate = root.TryGetProperty("private", out var p) && p.ValueKind == JsonValueKind.True;
+
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked, hostName);
+                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked, hostName, isPrivate);
                     return [new { type = "roomCreated", code = roomId, playerId }, mapMessage];
 
                 case "joinRoom":
@@ -146,6 +149,23 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                         default:
                             return [new { type = "error", reason = "notFound" }];
                     }
+
+                case "quickJoin":
+                    if (!ReadNickname(root, out string? quickName))
+                    {
+                        return [new { type = "error", reason = "nickname" }];
+                    }
+                    // 먼저 나감. 그러지 않으면 내가 있는 방을 골라 같은 방에 같은 사람이 둘 들어감
+                    registry.LeaveRoom(roomId, playerId);
+                    var (quickCode, created) = registry.QuickJoin(playerId, MaxPlayers, SendLocked, quickName);
+                    roomId = quickCode;
+                    return [new { type = created ? "roomCreated" : "joined", code = quickCode, playerId }, mapMessage];
+
+                case "leaveRoom":
+                    // 방에 없어도 답함. 대기실의 나가기 버튼이 첫 화면으로 돌아가는 신호로 씀
+                    registry.LeaveRoom(roomId, playerId);
+                    roomId = null;
+                    return [new { type = "left" }];
 
                 case "turn":
                     // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 범위 검사는 Room.SetAngle이 함
