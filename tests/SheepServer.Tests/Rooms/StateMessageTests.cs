@@ -12,7 +12,7 @@ public class StateMessageTests
     public void Serialize_PoseUsesMessageTableNames(Pose pose, string name)
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -21,5 +21,21 @@ public class StateMessageTests
         // Assert
         // 기술 설계서 메시지 state: 동작은 숫자가 아니라 이름으로 감
         Assert.Equal(name, sent.GetProperty("pose").GetString());
+    }
+
+    [Fact]
+    public void Serialize_NicknameAndColor()
+    {
+        // Arrange
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3);
+
+        // Act
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
+        var sent = doc.RootElement.GetProperty("players")[0];
+
+        // Assert
+        // 기술 설계서 메시지 state: 포스터와 목수건에 쓸 닉네임과 색 번호(0~7)
+        Assert.Equal("보안관", sent.GetProperty("nickname").GetString());
+        Assert.Equal(3, sent.GetProperty("color").GetInt32());
     }
 }

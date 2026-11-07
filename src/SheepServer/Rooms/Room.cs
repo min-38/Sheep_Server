@@ -89,8 +89,8 @@ public class Room
         }
     }
 
-    // send는 테스트처럼 보낼 곳이 없으면 null
-    public void AddPlayer(Guid playerId, Func<object, Task>? send = null)
+    // send는 테스트처럼 보낼 곳이 없으면 null. nickname은 검사를 마친 이름이고, 없으면 임시 이름을 씀
+    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null)
     {
         lock (_lock)
         {
@@ -104,7 +104,7 @@ public class Room
                 throw new InvalidOperationException("Round in progress.");
             }
 
-            _players.Add(new Player(playerId, 0, 0, 0));
+            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, FreeColor()));
 
             _currentPlayers++;
             ArrangePlayers();
@@ -367,7 +367,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -554,6 +554,18 @@ public class Room
         messages.Add(result);
         messages.Add(new PhaseMessage(next, _round.NextAt));
         return messages;
+    }
+
+    // 지금 방에 있는 사람이 쓰지 않는 가장 작은 색 번호. 나간 사람의 색은 비워 두고 다음 사람에게 줌 (컨셉 기획서 사람 구별).
+    // 방은 8명까지라 8색 안에서 늘 찾음. lock 안에서 부름
+    private int FreeColor()
+    {
+        int color = 0;
+        while (_players.Exists(p => p.Color == color))
+        {
+            color++;
+        }
+        return color;
     }
 
     private void ArrangePlayers()

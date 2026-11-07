@@ -76,6 +76,19 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
     // 받은 메시지 하나를 처리하고 보낼 답들을 순서대로 돌려줌 (기술 설계서 메시지).
     // 발사처럼 방 안 모두에게 가는 것은 여기서 보내고 끝나길 기다림
+    // nickname이 없으면 true와 null(임시 이름을 씀), 규칙에 맞으면 true와 그 이름, 그 밖(문자열이 아니거나 틀린 이름)은 false.
+    // 서버도 클라와 같은 규칙으로 다시 검사함 (시스템 기획서 방 화면 닉네임)
+    static bool ReadNickname(JsonElement root, out string? nickname)
+    {
+        nickname = null;
+        if (!root.TryGetProperty("nickname", out var n))
+        {
+            return true;
+        }
+        nickname = n.ValueKind == JsonValueKind.String ? Nickname.Normalize(n.GetString()) : null;
+        return nickname != null;
+    }
+
     async Task<object[]> Handle(string text)
     {
         JsonDocument doc;
@@ -99,19 +112,27 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
             switch (type)
             {
                 case "createRoom":
+                    if (!ReadNickname(root, out string? hostName))
+                    {
+                        return [new { type = "error", reason = "nickname" }];
+                    }
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked);
+                    roomId = registry.AddRoom(playerId, MaxPlayers, SendLocked, hostName);
                     return [new { type = "roomCreated", code = roomId, playerId }, mapMessage];
 
                 case "joinRoom":
+                    if (!ReadNickname(root, out string? guestName))
+                    {
+                        return [new { type = "error", reason = "nickname" }];
+                    }
                     string? code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
                         ? c.GetString()!.ToUpperInvariant() : null;
                     if (code != null && code == roomId)
                     {
                         return [new { type = "joined", code, playerId }, mapMessage];
                     }
-                    switch (registry.JoinRoom(code, playerId, SendLocked))
+                    switch (registry.JoinRoom(code, playerId, SendLocked, guestName))
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
