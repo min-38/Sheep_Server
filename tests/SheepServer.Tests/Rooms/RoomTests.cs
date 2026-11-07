@@ -611,7 +611,12 @@ public class RoomTests
         Assert.Collection(
             messages,
             m => Assert.Equal(_a, Assert.IsType<Direct>(m).To),
-            m => Assert.Equal(_b, Assert.IsType<EliminatedMessage>(m).PlayerId),
+            m =>
+            {
+                var eliminated = Assert.IsType<EliminatedMessage>(m);
+                Assert.Equal(_b, eliminated.PlayerId);
+                Assert.Equal(EliminationReason.Shot, eliminated.Reason);
+            },
             m =>
             {
                 var state = Assert.IsType<StateMessage>(m);
@@ -1320,6 +1325,163 @@ public class RoomTests
         // c는 d보다 D 넘게 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 d 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 d가 이김
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_d], 0);
         AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.ResultDuration);
+    }
+
+    [Fact]
+    public void Step_DeadlinePassed_UnfiredStandingPlayersTimeOut()
+    {
+        // Arrange
+        // a만 바깥(+x 쪽)으로 쏘고 b와 c는 쏘지 않음
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, 0, 0, duelAt + 100, duelAt + 120);
+        _room.Step(duelAt + 100 + ShotJudge.MaxDelay);
+        double deadline = duelAt + RoundFlow.DuelLimit;
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 쏘지 않은 둘만 자살로 쓰러지고 모두에게 사유와 함께 알림. 같은 틱의 state부터 쓰러짐 (컨셉 기획서 규칙 제한 시간)
+        var eliminated = messages.OfType<EliminatedMessage>().ToList();
+        Assert.Equal(new[] { _b, _c }, eliminated.Select(m => m.PlayerId));
+        Assert.All(eliminated, m => Assert.Equal(EliminationReason.Timeout, m.Reason));
+        var state = messages.OfType<StateMessage>().Single();
+        Assert.Equal(Pose.Stand, Find(state, _a).Pose);
+        Assert.Equal(Pose.Down, Find(state, _b).Pose);
+        Assert.Equal(Pose.Down, Find(state, _c).Pose);
+    }
+
+    [Fact]
+    public void Step_BeforeDeadlinePlusW_NoTimeoutYet()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay - 1);
+
+        // Assert
+        // 제한 시각 직전에 쏜 발사가 W 안에 아직 올 수 있어, W가 지나기 전에는 아무도 쓰러뜨리지 않음
+        Assert.Empty(messages.OfType<EliminatedMessage>());
+        Assert.All(messages.OfType<StateMessage>().Single().Players, p => Assert.Equal(Pose.Stand, p.Pose));
+    }
+
+    [Fact]
+    public void Step_FiredJustBeforeDeadline_JudgedNotTimedOut()
+    {
+        // Arrange
+        // a는 제한 시각 10ms 전에 b의 몸을 겨눠 쏨. 지연 때문에 제한 시각이 지난 뒤에 도착함
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.Step(deadline);
+        var fired = _room.Fire(_a, Math.PI, 0, deadline - 10, deadline + 50);
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 쏜 시각이 제한 시각 안이라 발사를 받아 판정함. a는 쐈으므로 시간 초과가 아니고, 쏘지 않은 b만 자살로 쓰러짐
+        Assert.IsType<ShotMessage>(Assert.Single(fired));
+        Assert.Equal(_a, Assert.Single(messages.OfType<Direct>(), d => d.Message is ShotResultMessage).To);
+        var eliminated = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal(_b, eliminated.PlayerId);
+        Assert.Equal(EliminationReason.Timeout, eliminated.Reason);
+        Assert.Equal(Pose.Stand, Find(messages.OfType<StateMessage>().Single(), _a).Pose);
+    }
+
+    [Fact]
+    public void Fire_AfterDeadline_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.Step(deadline);
+
+        // Act
+        var messages = _room.Fire(_a, Math.PI, HeadAcross, deadline + 1, deadline + 20);
+
+        // Assert
+        Assert.Empty(messages); // 제한 시각 뒤에 쏜 발사는 버림. 그 사람은 W 뒤에 자살로 쓰러짐
+    }
+
+    [Fact]
+    public void Fire_TimedOutPlayerAtDeadline_Ignored()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.Step(deadline + ShotJudge.MaxDelay); // 둘 다 자살로 쓰러짐
+
+        // Act
+        // 제한 시각 바로 그때 쏜 발사가 시간 초과를 정한 틱 뒤에 도착함
+        var messages = _room.Fire(_a, Math.PI, HeadAcross, deadline, deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 자살에 한 발을 써서 남은 총알이 없음. 맞은 시각에서 D 안의 발사처럼 받아 주면 안 됨
+        Assert.Empty(messages);
+    }
+
+    [Fact]
+    public void Step_AllTimeOut_NextRoundAmongThem()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+
+        // Act
+        var timedOut = _room.Step(deadline + ShotJudge.MaxDelay);
+        double now = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        var decided = _room.Step(now);
+        var state = StateAt(now + RoundFlow.ResultDuration);
+
+        // Assert
+        // 아무도 쏘지 않아 둘 다 제한 시각에 쓰러짐. 함께 쓰러진 것이라 둘이 한 발씩 들고 다음 라운드로 감 (컨셉 기획서 규칙 함께 쓰러짐)
+        Assert.Equal(new[] { _a, _b }, timedOut.OfType<EliminatedMessage>().Select(m => m.PlayerId));
+        AssertResult(Assert.Single(decided.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
+        AssertAnnounces(decided, RoundPhase.Countdown, now + RoundFlow.ResultDuration);
+        Assert.All(state.Players, p => Assert.Equal(Pose.Stand, p.Pose));
+    }
+
+    [Fact]
+    public void Step_MutualHitNearDeadline_CoFallenWithTimedOut()
+    {
+        // Arrange
+        // 제한 시각 직전에 a와 b가 D 안에 서로 머리를 맞히고, c는 쏘지 않음
+        double duelAt = StartDuelWith(_a, _b, _c);
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.Fire(_a, AToB, HeadInTriangle, deadline - 50, deadline - 30);
+        _room.Fire(_b, BToA, HeadInTriangle, deadline - 40, deadline - 20);
+        _room.Step(deadline - 40 + ShotJudge.MaxDelay); // a와 b가 쓰러짐
+
+        // Act
+        var timedOut = _room.Step(deadline + ShotJudge.MaxDelay);
+        double now = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        var decided = _room.Step(now);
+
+        // Assert
+        // c는 제한 시각에 쓰러져 D 안에 쓰러진 a, b와 함께 쓰러진 것임. 셋이 다음 라운드로 감 (컨셉 기획서 규칙 함께 쓰러짐)
+        Assert.Equal(_c, Assert.Single(timedOut.OfType<EliminatedMessage>()).PlayerId);
+        AssertResult(Assert.Single(decided.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b, _c], 1);
+    }
+
+    [Fact]
+    public void Step_ResultShownPastDeadline_WinnerNotTimedOut()
+    {
+        // Arrange
+        // b가 제한 시각 직전에 나가 a 혼자 남음. a는 총알을 든 채 이기고, 결과를 보는 동안 제한 시각이 지남
+        double duelAt = StartDuel();
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.RemovePlayer(_b);
+        _room.Step(deadline - 50); // 승리가 정해짐
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 결과가 정해지면 결투가 끝난 것이라 시간 초과를 보지 않음
+        Assert.Empty(messages.OfType<EliminatedMessage>());
+        Assert.Equal(Pose.Stand, Find(messages.OfType<StateMessage>().Single(), _a).Pose);
     }
 
     private static PlayerState Find(StateMessage state, Guid id) => state.Players.Single(p => p.Id == id);
