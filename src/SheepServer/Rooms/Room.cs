@@ -179,6 +179,32 @@ public class Room
         }
     }
 
+    // 걷다 멈추기. 그 사람은 at까지 걸은 자리에 서고 이번 라운드에는 더 걷지 않음 (기술 설계서 메시지 stop).
+    // at은 클라가 누른 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계. 답은 없음
+    public void Stop(Guid playerId, double at, double now)
+    {
+        lock (_lock)
+        {
+            // 걷기 시각과 그 뒤 첫 틱 사이에 올 수 있어 _walkAt만 보지 않고 다음 단계와 시각도 봄 (Fire의 dueling과 같은 이유)
+            double? walkAt = _walkAt ?? (_round.Next == RoundPhase.Walk && now >= _round.NextAt ? _round.NextAt : null);
+            if (walkAt == null || now >= walkAt.Value + RoundFlow.WalkDuration || !double.IsFinite(at))
+            {
+                return;
+            }
+
+            // 쓰러진 사람은 걷지 않음. 첫 stop만 씀
+            var player = _players.Find(p => p.Id == playerId);
+            if (player == null || player.Pose == Pose.Down || player.StopDistance != null)
+            {
+                return;
+            }
+
+            // 누른 시각은 쏜 시각처럼 W까지만 앞당겨 주고, 걷기 전에 누른 것은 걷기 시각에 누른 것으로 봄
+            at = Math.Max(ShotJudge.ClampAt(at, now), walkAt.Value);
+            player.StopDistance = RoundFlow.WalkDistance * Math.Clamp((at - walkAt.Value) / RoundFlow.WalkDuration, 0, 1);
+        }
+    }
+
     // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 돌려줌. 받으면 shot 하나, 버리면 빈 목록 (기술 설계서 메시지 fire).
     // 명중은 여기서 정하지 않고 쏜 시각에서 W가 지난 틱(Step)에 정함. pitch는 위아래 각도(라디안, 위가 +).
     // at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
@@ -351,10 +377,11 @@ public class Room
                         continue;
                     }
 
-                    double distance = StartPlacement.Radius + walked;
+                    // 멈춘 사람은 멈춘 자리에 서서 걷기가 끝날 때까지 기다림. 그래서 "시작!"은 모두 같은 시각임
+                    double distance = StartPlacement.Radius + Math.Min(walked, player.StopDistance ?? walked);
                     player.X = CenterX + Math.Cos(player.Angle) * distance;
                     player.Y = CenterY + Math.Sin(player.Angle) * distance;
-                    player.Pose = ratio < 1 ? Pose.Walk : Pose.Stand;
+                    player.Pose = ratio < 1 && player.StopDistance == null ? Pose.Walk : Pose.Stand;
                 }
 
                 // 다 걸으면 그만 계산함. 계속하면 결투 중에 돌 때마다 자리가 원을 따라 미끄러짐
@@ -403,6 +430,9 @@ public class Room
             player.DownAt = null;
             player.Ammo = rounds;
             player.LastShotAt = null;
+
+            // 걷기가 시작하는 틱이 아니라 여기서 지움. 걷기 시각과 그 틱 사이에 온 stop이 지워지지 않게 함
+            player.StopDistance = null;
         }
     }
 
