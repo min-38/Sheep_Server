@@ -2067,17 +2067,37 @@ public class RoomTests
     }
 
     [Fact]
-    public void Spectate_RematchStands_Unwatched()
+    public void Spectate_DownTarget_Ignored()
     {
         // Arrange
-        // 둘이 서로 머리를 맞혀 함께 쓰러지고, 쓰러진 a가 쓰러진 b를 봄. 다음 라운드에 둘 다 다시 섬
+        // 둘이 서로 머리를 맞혀 함께 쓰러짐
         double duelAt = StartDuel();
         double shotAt = duelAt + 100;
         _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
         _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
         _room.Step(shotAt + ShotJudge.MaxDelay);
+
+        // Act
         var spectating = _room.Spectate(_a, _b);
-        double decided = shotAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+
+        // Assert
+        // 관전은 살아 있는 사람의 시점만 봄 (컨셉 기획서 규칙 탈락한 뒤). 함께 쓰러져 다시 설 사람끼리 반샷을 엿보지 못함
+        Assert.Null(spectating);
+    }
+
+    [Fact]
+    public void Spectate_RematchStands_Unwatched()
+    {
+        // Arrange
+        // b가 a의 머리를 먼저 맞혀 a가 쓰러지고, 아직 서 있는 b를 a가 봄. 그다음 a가 D 안에 쏜 발사가 b를 맞혀 함께 쓰러지고 다음 라운드에 둘 다 다시 섬
+        double duelAt = StartDuel();
+        double shotAt = duelAt + 100;
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt + 50, shotAt + 70);
+        _room.Step(shotAt + ShotJudge.MaxDelay); // a만 쓰러짐
+        var spectating = _room.Spectate(_a, _b);
+        _room.Step(shotAt + 50 + ShotJudge.MaxDelay); // b도 쓰러짐
+        double decided = shotAt + 50 + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(decided);
         double next = StartNextRound(decided + RoundFlow.ResultDuration);
 
@@ -2086,7 +2106,7 @@ public class RoomTests
         var messages = _room.Step(next + 100 + ShotJudge.MaxDelay);
 
         // Assert
-        // 쓰러진 사람도 볼 수 있지만, 다시 서면 관전이 풀려 서 있는 동안 b의 사격 결과를 받지 않음
+        // 다시 서면 관전이 풀려 서 있는 동안 b의 사격 결과를 받지 않음
         Assert.NotNull(spectating);
         Assert.Single(TickLoop.MessagesFor(_b, messages).OfType<ShotResultMessage>());
         Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<ShotResultMessage>());

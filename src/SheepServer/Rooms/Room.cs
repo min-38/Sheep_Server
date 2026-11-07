@@ -299,7 +299,8 @@ public class Room
     }
 
     // 쓰러진 사람이 볼 사람을 고름. 받으면 대상의 지금 반샷 수와 남은 총알을 담은 답을, 버리거나 그만두면(targetId가 null) null을 돌려줌
-    // (기술 설계서 메시지 spectate). 서 있는 사람은 받지 않아 누가 반샷인지 새지 않음. 쓰러진 사람은 판 도중에만 있어 판 도중인지는 따로 보지 않음
+    // (기술 설계서 메시지 spectate). 서 있는 사람은 받지 않아 누가 반샷인지 새지 않음. 쓰러진 사람은 판 도중에만 있어 판 도중인지는 따로 보지 않음.
+    // 대상도 서 있어야 함. 관전은 살아 있는 사람의 시점이고(컨셉 기획서 규칙 탈락한 뒤), 모두 함께 쓰러져 다시 설 사람끼리 반샷을 엿보지 못하게 함
     public SpectatingMessage? Spectate(Guid spectatorId, Guid? targetId)
     {
         lock (_lock)
@@ -310,10 +311,9 @@ public class Room
                 return null;
             }
 
-            // 대상이 쓰러져 있어도 받음. 다시 보기와 마지막 장면 보기에 씀
             var spectator = _players.Find(p => p.Id == spectatorId);
             var target = _players.Find(p => p.Id == targetId);
-            if (spectator == null || spectator.Pose != Pose.Down || target == null || target == spectator)
+            if (spectator == null || spectator.Pose != Pose.Down || target == null || target.Pose == Pose.Down)
             {
                 return null;
             }
