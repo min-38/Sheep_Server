@@ -1,3 +1,5 @@
+using SheepServer.Shooting;
+
 namespace SheepServer.Rounds;
 
 // 판 흐름 규칙. 시계와 방을 모르고 시각, 인원, 준비 수만 받아 테스트에서 바로 부를 수 있음
@@ -23,7 +25,7 @@ public static class RoundFlow
     public const double MinDuelWait = 1000;
     public const double MaxDuelWait = 3000;
 
-    // ms. 판 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 승리면 준비 중으로, 재대결이면 카운트다운으로 넘어감.
+    // ms. 판 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 승리면 준비 중으로, 다음 라운드면 카운트다운으로 넘어감.
     // ponytail: 임시 값. 플레이해 보며 정함
     public const double ResultDuration = 3000;
 
@@ -83,14 +85,14 @@ public static class RoundFlow
                 return null;
             }
 
-            // 살아 있던 사람이 모두 나가 혼자 남으면 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 그 사람이 이김
+            // 살아 있던 사람이 모두 나가 혼자 남으면 다음 라운드를 할 수 없음. 상대가 모두 기권한 것으로 보고 그 사람이 이김
             if (lastDown.Count == 1)
             {
                 return new ResultMessage(Outcome.Win, new List<Guid> { lastDown[0] }, 0);
             }
 
-            // 무승부로 보고 마지막에 함께 쓰러진 사람끼리 재대결함
-            return new ResultMessage(Outcome.Rematch, lastDown, lastDown.Count);
+            // 무승부로 보고 마지막에 함께 쓰러진 사람끼리 다음 라운드로 감
+            return new ResultMessage(Outcome.Rematch, lastDown, Revolver.Capacity);
         }
 
         foreach (var player in alive)
@@ -101,13 +103,13 @@ public static class RoundFlow
             }
         }
 
-        // 2명 이상 살았는데 모두 총알이 없음. 살아 있는 사람끼리 재대결하고 남은 인원 수만큼 장전함
+        // 2명 이상 살았는데 모두 쏴서 총알이 없음. 살아남은 사람끼리 다음 라운드로 가고 다시 한 발씩 장전함
         var ids = new List<Guid>();
         foreach (var player in alive)
         {
             ids.Add(player.Id);
         }
-        return new ResultMessage(Outcome.Rematch, ids, ids.Count);
+        return new ResultMessage(Outcome.Rematch, ids, Revolver.Capacity);
     }
 
     // 같은 시드면 같은 대기 시간. 테스트에서 시드를 고정해 결투 시각을 미리 알 수 있음

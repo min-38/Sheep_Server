@@ -123,9 +123,19 @@ public class RoomRegistryTests
     }
 
     [Fact]
-    public void AddRoom_MaxPlayersOver7_Throws()
+    public void AddRoom_EightPlayers_Ok()
+    {
+        // Act
+        string roomId = _registry.AddRoom(_hostId, 8);
+
+        // Assert
+        Assert.Equal(8, _registry.GetRoomById(roomId)!.MaxPlayers); // 컨셉 기획서: 한 방 2~8명
+    }
+
+    [Fact]
+    public void AddRoom_NinePlayers_Throws()
     {
         // Act & Assert
-        Assert.Throws<ArgumentException>(() => _registry.AddRoom(_hostId, 8));
+        Assert.Throws<ArgumentException>(() => _registry.AddRoom(_hostId, 9));
     }
 }

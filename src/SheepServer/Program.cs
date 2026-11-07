@@ -4,8 +4,8 @@ using SheepServer.Rooms;
 using SheepServer.Arena;
 using SheepServer.Clock;
 
-// 컨셉 기획서: 한 방 2~7명
-const int MaxPlayers = 7;
+// 컨셉 기획서: 한 방 2~8명
+const int MaxPlayers = 8;
 
 // 결투장 맵. 바뀌지 않아 한 번만 만들어 모든 연결이 같이 씀
 var mapMessage = new MapMessage(ArenaMap.Fixed.Width, ArenaMap.Fixed.Height, ArenaMap.Fixed.Cells);

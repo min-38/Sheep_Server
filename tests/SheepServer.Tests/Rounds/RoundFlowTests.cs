@@ -202,7 +202,7 @@ public class RoundFlowTests
     public void Result_TwoAliveSomeoneHasAmmo_GoesOn()
     {
         // Act
-        var bothArmed = RoundFlow.Result([(A, 2), (B, 5)], [C]);
+        var bothArmed = RoundFlow.Result([(A, 1), (B, 1)], [C]);
         var oneArmed = RoundFlow.Result([(A, 0), (B, 1)], [C]);
 
         // Assert
@@ -212,15 +212,15 @@ public class RoundFlowTests
     }
 
     [Fact]
-    public void Result_AliveAllOutOfAmmo_RematchLoadingAliveCount()
+    public void Result_AliveAllFired_NextRoundWithOneBullet()
     {
         // Act
         var result = RoundFlow.Result([(A, 0), (B, 0), (C, 0)], [D]);
 
         // Assert
-        // 컨셉 기획서 규칙: 총알이 떨어지면 살아 있는 사람끼리 재대결하고 남은 인원 수만큼 장전함 (3명이면 각자 3발).
-        // 재대결하는 사람은 받은 순서대로
-        AssertResult(result, Outcome.Rematch, [A, B, C], 3);
+        // 컨셉 기획서 규칙: 살아 있는 사람이 모두 쏘면 살아남은 사람끼리 다음 라운드로 감. 인원과 상관없이 라운드마다 한 발.
+        // 다음 라운드로 가는 사람은 받은 순서대로
+        AssertResult(result, Outcome.Rematch, [A, B, C], 1);
     }
 
     [Fact]
@@ -230,8 +230,8 @@ public class RoundFlowTests
         var result = RoundFlow.Result([], [B, C]);
 
         // Assert
-        // 컨셉 기획서 규칙: 아무도 안 남으면 무승부로 보고 마지막에 함께 쓰러진 사람끼리 재대결함
-        AssertResult(result, Outcome.Rematch, [B, C], 2);
+        // 컨셉 기획서 규칙: 아무도 안 남으면 무승부로 보고 마지막에 함께 쓰러진 사람끼리 다음 라운드로 감. 이때도 한 발
+        AssertResult(result, Outcome.Rematch, [B, C], 1);
     }
 
     [Fact]
