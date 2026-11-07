@@ -161,6 +161,10 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     roomId = quickCode;
                     return [new { type = created ? "roomCreated" : "joined", code = quickCode, playerId }, mapMessage];
 
+                case "listRooms":
+                    // 방에 들어가기 전에도 받음. 첫 화면의 대기실 보기가 열려 있는 동안 2초마다 보냄
+                    return [new { type = "rooms", rooms = registry.List() }];
+
                 case "leaveRoom":
                     // 방에 없어도 답함. 대기실의 나가기 버튼이 첫 화면으로 돌아가는 신호로 씀
                     registry.LeaveRoom(roomId, playerId);
