@@ -39,11 +39,13 @@ public class Room
     private IReadOnlyList<Guid>? _rematchers;
     private int _rematchRounds;
 
-    public Room(string roomId, int maxPlayers, bool isPrivate = false)
+    // name은 검사를 마친 방 이름. 테스트처럼 이름이 상관없으면 비워 둠
+    public Room(string roomId, int maxPlayers, bool isPrivate = false, string name = "")
     {
         _roomId = roomId;
         MaxPlayers = maxPlayers;
         IsPrivate = isPrivate;
+        Name = name;
         _currentPlayers = 0;
         _players = new List<Player>();
     }
@@ -52,6 +54,9 @@ public class Room
 
     // 비공개 방은 랜덤 입장과 방 목록에 나오지 않고 방 코드로만 들어옴 (시스템 기획서 방 화면 방 만들기)
     public bool IsPrivate { get; }
+
+    // 대기실 보기와 술집 칠판에 보이는 이름. 방이 있는 동안 바뀌지 않음
+    public string Name { get; }
 
     public int TickNumber => _tickNumber;
 
@@ -415,7 +420,7 @@ public class Room
             {
                 members.Add(new RoomMember(player.Nickname, player.Color));
             }
-            return new RoomSummary(_roomId, members, _maxPlayers, InRound);
+            return new RoomSummary(_roomId, Name, members, _maxPlayers, InRound);
         }
     }
 

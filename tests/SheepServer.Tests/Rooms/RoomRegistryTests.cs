@@ -304,4 +304,49 @@ public class RoomRegistryTests
         // Assert
         Assert.True(listed.Playing);
     }
+
+    [Fact]
+    public void AddRoom_Name_InList()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 4, null, "보안관", false, "먼지 낀 술집");
+        var room = Assert.Single(_registry.List());
+
+        // Assert
+        Assert.Equal("먼지 낀 술집", room.Name);
+        Assert.Equal(4, room.Max);
+    }
+
+    [Fact]
+    public void AddRoom_NoName_NicknameRoom()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 8, null, "보안관");
+
+        // Assert
+        Assert.Equal("보안관의 방", Assert.Single(_registry.List()).Name);
+    }
+
+    [Fact]
+    public void AddRoom_NoNameNoNickname_PlaceholderRoom()
+    {
+        // Act
+        _registry.AddRoom(_hostId, 8);
+
+        // Assert
+        Assert.Equal(RoomName.Default(Nickname.Placeholder), Assert.Single(_registry.List()).Name);
+    }
+
+    [Fact]
+    public void QuickJoin_Creates_NicknameRoom()
+    {
+        // Act
+        _registry.QuickJoin(_hostId, 8, null, "떠돌이");
+
+        // Assert
+        // 시스템 기획서 방 화면 랜덤 입장: 새로 만드는 방은 "닉네임의 방", 8명, 공개
+        var room = Assert.Single(_registry.List());
+        Assert.Equal("떠돌이의 방", room.Name);
+        Assert.Equal(8, room.Max);
+    }
 }
