@@ -424,6 +424,25 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task Turn_Pitch_OtherPlayerSeesPitchInState()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        await Send(guest, """{"type":"turn","angle":1.25,"pitch":0.3}""");
+        await ReceiveWhere(host, m => IsState(m) && PitchOf(m, guestId) == 0.3);
+
+        // 숫자가 아닌 pitch는 그것만 버리고 각도는 받음. 위아래 시선은 그대로 (기술 설계서 메시지 turn)
+        await Send(guest, """{"type":"turn","angle":2.5,"pitch":"0.1"}""");
+        var state = await ReceiveWhere(host, m => IsState(m) && AngleOf(m, guestId) == 2.5);
+        Assert.Equal(0.3, PitchOf(state, guestId));
+    }
+
+    [Fact]
     public async Task Ready_OtherPlayerSeesReadyThenUnready()
     {
         using var host = await Connect();
@@ -771,6 +790,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("angle").GetDouble();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 위아래 시선. 없으면 null
+    static double? PitchOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("pitch").GetDouble();
             }
         }
         return null;

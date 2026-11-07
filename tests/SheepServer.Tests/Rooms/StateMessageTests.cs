@@ -12,7 +12,7 @@ public class StateMessageTests
     public void Serialize_PoseUsesMessageTableNames(Pose pose, string name)
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0, 0);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0, 0, 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -27,7 +27,7 @@ public class StateMessageTests
     public void Serialize_NicknameAndColor()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3, 0);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3, 0, 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -43,7 +43,7 @@ public class StateMessageTests
     public void Serialize_Wins()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 2);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 2, 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -52,5 +52,20 @@ public class StateMessageTests
         // Assert
         // 기술 설계서 메시지 state: 이 방에서 이긴 횟수. 클라가 현상금(× $100)으로 적음
         Assert.Equal(2, sent.GetProperty("wins").GetInt32());
+    }
+
+    [Fact]
+    public void Serialize_Pitch()
+    {
+        // Arrange
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0.25);
+
+        // Act
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
+        var sent = doc.RootElement.GetProperty("players")[0];
+
+        // Assert
+        // 기술 설계서 메시지 state: 위아래 시선. turn의 pitch와 같음
+        Assert.Equal(0.25, sent.GetProperty("pitch").GetDouble());
     }
 }
