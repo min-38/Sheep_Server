@@ -154,6 +154,14 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
+                case "stop":
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 걷는 중인지와 시각 검사는 Room.Stop이 함
+                    if (root.TryGetProperty("at", out var stopAtProp) && stopAtProp.ValueKind == JsonValueKind.Number && stopAtProp.TryGetDouble(out double stopAt))
+                    {
+                        registry.GetRoomById(roomId)?.Stop(playerId, stopAt, ServerClock.Now);
+                    }
+                    return [];
+
                 case "clockSync":
                     // 클라가 보낸 시각을 그대로 돌려줌. 클라가 시각을 찍어 보내는 순간과 서버가 받는 순간 사이에 네트워크 지연이 있음
                     // 1e400 같은 값은 무한대가 돼 답을 JSON으로 만들 때 던지므로 IsFinite까지 봄

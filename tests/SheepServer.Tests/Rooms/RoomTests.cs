@@ -480,6 +480,210 @@ public class RoomTests
     }
 
     [Fact]
+    public void Stop_DuringWalk_StaysAtStopDistance()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
+        var atEnd = StateAt(walkAt + RoundFlow.WalkDuration);
+        var later = StateAt(walkAt + RoundFlow.WalkDuration + 1000);
+
+        // Assert
+        // 걷기 1초에 멈춤. 걷는 시간의 3분의 1이라 최대 걸음의 3분의 1에 섬. 멈추지 않은 b는 끝까지 걸음
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(atEnd, _a));
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(later, _a));
+        AssertFacesOutward(Find(later, _a));
+        AssertWalked(2, 1, RoundFlow.WalkDistance, Find(later, _b));
+    }
+
+    [Fact]
+    public void Stop_StoppedPlayer_PoseStand()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
+        var state = StateAt(walkAt + 1500);
+
+        // Assert
+        // 멈춘 사람은 걷기 단계에도 서 있음. 그래서 다른 사람 화면에서 발소리가 그침 (기술 설계서 메시지 state)
+        Assert.Equal(Pose.Stand, Find(state, _a).Pose);
+        Assert.Equal(Pose.Walk, Find(state, _b).Pose);
+    }
+
+    [Fact]
+    public void Stop_BeforeWalk_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room); // 카운트다운 중
+
+        // Act
+        _room.Stop(_a, walkAt - 100, walkAt - 100);
+        _room.Step(walkAt);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_AfterWalkEnds_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        double walkEnd = walkAt + RoundFlow.WalkDuration;
+        _room.Step(walkAt);
+
+        // Act
+        // 걷기가 끝나는 시각에 도착함. 쏜 시각처럼 at을 앞당겨 주지 않고 도착 시각으로 가름
+        _room.Stop(_a, walkEnd - 20, walkEnd);
+        var state = StateAt(walkEnd + 50);
+
+        // Assert
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_Twice_FirstWins()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
+        _room.Stop(_a, walkAt + 2000, walkAt + 2010);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        // 한 번 멈추면 다시 걷지 않음. 두 번째 stop으로 더 가지도 않음
+        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_AtLaterThanArrival_ClampedToArrival()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt + 2500, walkAt + 1500);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        // 도착보다 늦게 누를 수는 없어 도착 시각에 멈춘 것으로 봄 (fire의 쏜 시각과 같음)
+        AssertWalked(2, 0, RoundFlow.WalkDistance * 1500 / RoundFlow.WalkDuration, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_AtMoreThanMaxDelayBeforeArrival_Clamped()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt + 500, walkAt + 1500);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        // 지연 보정은 W까지만 해 줌. 그래서 도착 시각 - W에 멈춘 것으로 봄
+        AssertWalked(2, 0, RoundFlow.WalkDistance * (1500 - ShotJudge.MaxDelay) / RoundFlow.WalkDuration, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_AtBeforeWalkStart_StaysAtStart()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(_a, walkAt - 100, walkAt + 50);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        // 걷기 전에 누른 것은 걷기 시각에 누른 것으로 봄. 한 걸음도 걷지 않음
+        AssertWalked(2, 0, 0, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_BeforeWalkStartTick_Applied()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+
+        // Act
+        // 걷기 시각은 지났지만 그 뒤 첫 틱이 아직 오지 않았을 때 도착함
+        _room.Stop(_a, walkAt + 10, walkAt + 20);
+        _room.Step(walkAt + 40);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        AssertWalked(2, 0, RoundFlow.WalkDistance * 10 / RoundFlow.WalkDuration, Find(state, _a));
+    }
+
+    [Fact]
+    public void Stop_PlayerNotInRoom_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        _room.Stop(Guid.NewGuid(), walkAt + 1000, walkAt + 1010);
+        var state = StateAt(walkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
+        AssertWalked(2, 1, RoundFlow.WalkDistance, Find(state, _b));
+    }
+
+    [Fact]
+    public void Stop_NextRound_WalksAgainFully()
+    {
+        // Arrange
+        // 첫 라운드에 a가 걷다 멈추고, 아무도 쏘지 않아 둘 다 시간 초과로 쓰러져 다음 라운드로 감
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt + 50);
+        _room.Step(duelAt);
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.Step(deadline + ShotJudge.MaxDelay);
+        double decidedAt = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        _room.Step(decidedAt);
+        double countdownAt = decidedAt + RoundFlow.ResultDuration;
+        _room.Step(countdownAt);
+        double nextWalkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        _room.Step(nextWalkAt);
+
+        // Act
+        var state = StateAt(nextWalkAt + RoundFlow.WalkDuration);
+
+        // Assert
+        // 멈춘 자리는 그 라운드에만 씀. 다음 라운드에는 다시 최대 걸음까지 걸음
+        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
+    }
+
+    [Fact]
     public void SetAngle_DuringCountdown_Ignored()
     {
         // Arrange
