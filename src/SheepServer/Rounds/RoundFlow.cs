@@ -12,7 +12,8 @@ public static class RoundFlow
     // ms. 3, 2, 1을 이 간격마다 보여 줌 (시스템 기획서 판 흐름 시간). ponytail: 임시 값
     public const double CountdownInterval = 1000;
 
-    // 칸. 걷기가 끝나면 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
+    // 칸. 최대 걸음. 멈추지 않으면 걷기가 끝날 때 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간).
+    // 걷다 멈춘 사람은 그보다 덜 감. ponytail: 임시 값. 플레이해 보며 정함
     public const double WalkDistance = 3;
 
     // 칸/초. 모두 같은 속도로 걸음 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함

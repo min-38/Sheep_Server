@@ -330,6 +330,23 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal(7, reply.GetProperty("t0").GetDouble());
     }
 
+    [Fact]
+    public async Task Stop_NotANumber_IgnoredAndConnectionKeepsWorking()
+    {
+        using var ws = await Connect();
+        await Request(ws, """{"type":"createRoom"}""");
+
+        // 숫자가 아닌 시각과 빠진 시각은 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
+        await Send(ws, """{"type":"stop","at":"100"}""");
+        await Send(ws, """{"type":"stop"}""");
+        await Send(ws, """{"type":"stop","at":100}""");
+        await Send(ws, """{"type":"clockSync","t0":7}""");
+
+        // 방을 만든 뒤에 오는 map은 건너뜀
+        var reply = await ReceiveWhere(ws, m => IsType(m, "serverTime"));
+        Assert.Equal(7, reply.GetProperty("t0").GetDouble());
+    }
+
     // 실제 판을 끝까지 돌려 "시작!"을 기다리므로 7~9초 걸림
     [Fact]
     public async Task Fire_AtOpponentAfterDuel_BothGetShotThenEliminated()
