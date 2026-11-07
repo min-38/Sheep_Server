@@ -10,8 +10,8 @@ public static class Nickname
     // ponytail: 첫 화면(M8 계획 Task C1)이 닉네임을 보내면 지우고, nickname이 없으면 error로 바꿈
     public const string Placeholder = "총잡이";
 
-    // 앞뒤 공백을 지우고 규칙에 맞으면 그 이름, 아니면 null. 완성형 한글(가~힣)·영문·숫자만 받음.
-    // 자모만 쓴 이름(ㅋㅋ)은 포스터에서 읽기 어려워 받지 않음. 받는 글자는 모두 UTF-16 한 단위라 Length가 글자 수임
+    // 앞뒤 공백을 지우고 규칙에 맞으면 그 이름, 아니면 null. 한글(완성형 가~힣, 호환 자모 ㄱ~ㅣ)·영문·숫자만 받음.
+    // 자모 바로 뒤의 한글 채움 문자(U+3164)는 보이지 않는 글자라 넣지 않음. 받는 글자는 모두 UTF-16 한 단위라 Length가 글자 수임
     public static string? Normalize(string? raw)
     {
         string? name = raw?.Trim();
@@ -22,7 +22,7 @@ public static class Nickname
 
         foreach (char c in name)
         {
-            if (!(c is >= '가' and <= '힣' || char.IsAsciiLetterOrDigit(c)))
+            if (!(c is >= '가' and <= '힣' or >= 'ㄱ' and <= 'ㅣ' || char.IsAsciiLetterOrDigit(c)))
             {
                 return null;
             }
