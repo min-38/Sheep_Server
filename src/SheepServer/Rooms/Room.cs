@@ -211,6 +211,12 @@ public class Room
             // 아래 검사와 판정은 자른 쏜 시각으로 함 (기술 설계서 명중 판정 쏜 시각 검사)
             at = ShotJudge.ClampAt(at, now);
 
+            // 제한 시각 뒤에 쏜 발사는 버림. 그 사람은 W 뒤에 자살로 쓰러짐 (컨셉 기획서 규칙 제한 시간)
+            if (at > _duelAt + RoundFlow.DuelLimit)
+            {
+                return messages;
+            }
+
             // 맞았어도 맞은 시각에서 D 안에 쏜 발사는 받음. 서로 맞히면 함께 쓰러짐
             if (shooter.DownAt != null && at > shooter.DownAt.Value + ShotJudge.MutualWindow)
             {
@@ -253,9 +259,11 @@ public class Room
             // 쏜 시각에서 W가 지난 발사를 쏜 시각 순서로 판정함. 뒤에 올 발사는 쏜 시각이 지금 - W보다 늦어 이것들보다 앞설 수 없음
             messages.AddRange(JudgeShots(now));
 
-            // 결과는 틱마다 봄. 판 도중 나간 사람은 탈락으로 봄
+            // 결과는 틱마다 봄. 판 도중 나간 사람은 탈락으로 봄. 시간 초과는 결과를 정하기 전에 봐야 그 틱에 결과가 남은 사람을 셈.
+            // 결과가 정해진 뒤에는 결투가 끝난 것이라 총알을 든 승자도 시간 초과로 보지 않음
             if (_round.Phase == RoundPhase.Duel && _round.Next == null)
             {
+                messages.AddRange(TimeOut(now));
                 messages.AddRange(DecideResult(now));
             }
 
@@ -435,12 +443,40 @@ public class Room
             {
                 target.Pose = Pose.Down;
                 target.DownAt = outcome.At;
-                messages.Add(new EliminatedMessage(target.Id));
+                messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot));
             }
             else
             {
                 messages.Add(new Direct(target.Id, new WoundedMessage()));
             }
+        }
+        return messages;
+    }
+
+    // 제한 시각에서 W가 지났으면 서 있고 아직 쏘지 않은 사람을 모두 자살로 쓰러뜨리고, 모두에게 갈 탈락 알림을 돌려줌 (컨셉 기획서 규칙 제한 시간).
+    // 제한 시각 전에 쏜 발사는 W 안에 도착해 이 틱의 JudgeShots에서 이미 판정됨. lock 안에서 부름
+    private List<object> TimeOut(double now)
+    {
+        var messages = new List<object>();
+        double deadline = _duelAt + RoundFlow.DuelLimit;
+        if (now < deadline + ShotJudge.MaxDelay)
+        {
+            return messages;
+        }
+
+        foreach (var player in _players)
+        {
+            if (player.Pose == Pose.Down || player.Ammo <= 0)
+            {
+                continue;
+            }
+
+            // 모두 제한 시각에 쓰러져 서로 함께 쓰러진 것임. 자살에 한 발을 써서, 제한 시각에 쏜 발사가 이 틱 뒤에 와도 받지 않음.
+            // 총알이 없어 다음 틱에 다시 쓰러뜨리지도 않음
+            player.Pose = Pose.Down;
+            player.DownAt = deadline;
+            player.Ammo = 0;
+            messages.Add(new EliminatedMessage(player.Id, EliminationReason.Timeout));
         }
         return messages;
     }
