@@ -76,16 +76,12 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
     // 받은 메시지 하나를 처리하고 보낼 답들을 순서대로 돌려줌 (기술 설계서 메시지).
     // 발사처럼 방 안 모두에게 가는 것은 여기서 보내고 끝나길 기다림
-    // nickname이 없으면 true와 null(임시 이름을 씀), 규칙에 맞으면 true와 그 이름, 그 밖(문자열이 아니거나 틀린 이름)은 false.
+    // 규칙에 맞으면 true와 그 이름, 그 밖(없거나 문자열이 아니거나 틀린 이름)은 false.
+    // 첫 화면이 늘 닉네임을 보내므로 없으면 임시 이름을 주지 않고 거절함 (SHEEP-73).
     // 서버도 클라와 같은 규칙으로 다시 검사함 (시스템 기획서 방 화면 닉네임)
     static bool ReadNickname(JsonElement root, out string? nickname)
     {
-        nickname = null;
-        if (!root.TryGetProperty("nickname", out var n))
-        {
-            return true;
-        }
-        nickname = n.ValueKind == JsonValueKind.String ? Nickname.Normalize(n.GetString()) : null;
+        nickname = root.TryGetProperty("nickname", out var n) && n.ValueKind == JsonValueKind.String ? Nickname.Normalize(n.GetString()) : null;
         return nickname != null;
     }
 
