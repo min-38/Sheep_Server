@@ -1,0 +1,6 @@
+# 맥에서 만든 빌드 결과가 리눅스 빌드에 섞이지 않게 함
+**/bin/
+**/obj/
+# 클라 파일은 Dockerfile이 Sheep_Client에서 새로 빌드해 넣음. 맥에 남은 옛 파일은 넣지 않음
+src/SheepServer/wwwroot/
+.git
