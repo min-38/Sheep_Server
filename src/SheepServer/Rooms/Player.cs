@@ -48,4 +48,7 @@ public class Player
     // 이번 라운드에 걷다 멈춘 거리(칸). 멈추지 않았으면 null이고 최대 걸음까지 걸음 (컨셉 기획서 규칙 걷기와 멈추기).
     // 시작 배치에 다시 설 때 지움
     public double? StopDistance { get; set; }
+
+    // 이 방에서 이긴 횟수. 클라가 × $100을 현상금으로 적음. 방을 나가면 Player와 함께 사라짐 (시스템 기획서 방 화면 현상금)
+    public int Wins { get; set; }
 }

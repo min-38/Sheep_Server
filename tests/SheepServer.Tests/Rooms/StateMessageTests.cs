@@ -12,7 +12,7 @@ public class StateMessageTests
     public void Serialize_PoseUsesMessageTableNames(Pose pose, string name)
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0, 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -27,7 +27,7 @@ public class StateMessageTests
     public void Serialize_NicknameAndColor()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3, 0);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -37,5 +37,20 @@ public class StateMessageTests
         // 기술 설계서 메시지 state: 포스터와 목수건에 쓸 닉네임과 색 번호(0~7)
         Assert.Equal("보안관", sent.GetProperty("nickname").GetString());
         Assert.Equal(3, sent.GetProperty("color").GetInt32());
+    }
+
+    [Fact]
+    public void Serialize_Wins()
+    {
+        // Arrange
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 2);
+
+        // Act
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
+        var sent = doc.RootElement.GetProperty("players")[0];
+
+        // Assert
+        // 기술 설계서 메시지 state: 이 방에서 이긴 횟수. 클라가 현상금(× $100)으로 적음
+        Assert.Equal(2, sent.GetProperty("wins").GetInt32());
     }
 }
