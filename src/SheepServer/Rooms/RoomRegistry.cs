@@ -28,8 +28,8 @@ public class RoomRegistry
     }
 
     // Create
-    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer)
-    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false)
+    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임의 방"
+    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null)
     {
         lock (_rooms)
         {
@@ -50,7 +50,7 @@ public class RoomRegistry
                 throw new ArgumentException("MaxPlayers must be less than or equal to 8.");
             }
 
-            Room newRoom = new Room(roomId, maxPlayers, isPrivate);
+            Room newRoom = new Room(roomId, maxPlayers, isPrivate, name ?? RoomName.Default(nickname ?? Nickname.Placeholder));
             _rooms.Add(roomId, newRoom);
 
             CancellationTokenSource cts = new CancellationTokenSource();
