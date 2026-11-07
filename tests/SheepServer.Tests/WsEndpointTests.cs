@@ -47,7 +47,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     [Theory]
     [InlineData("\"가\"")]
     [InlineData("\"보안관!\"")]
-    [InlineData("\"ㅋㅋ\"")]
+    [InlineData("\"보 안\"")]
     [InlineData("7")]
     [InlineData("null")]
     public async Task CreateRoom_BadNickname_Error(string nickname)
@@ -176,7 +176,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var ws = await Connect();
 
-        var reply = await Request(ws, """{"type":"quickJoin","nickname":"ㅋㅋ"}""");
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관!"}""");
 
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("nickname", reply.GetProperty("reason").GetString());
