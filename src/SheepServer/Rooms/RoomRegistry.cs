@@ -28,8 +28,9 @@ public class RoomRegistry
     }
 
     // Create
-    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임의 방"
-    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null)
+    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임의 방".
+    // character는 검사를 마친 방장의 캐릭터 번호
+    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null, int character = 0)
     {
         lock (_rooms)
         {
@@ -61,7 +62,7 @@ public class RoomRegistry
             _ = tickLoop.StartAsync(cts.Token);
 
             // 룸 생성 시 방 만든 방장은 자동 입장
-            JoinRoom(newRoom, hostId, send, nickname); // "host"는 방장 ID로 가정
+            JoinRoom(newRoom, hostId, send, nickname, character); // "host"는 방장 ID로 가정
 
             return roomId;
         }
@@ -74,19 +75,19 @@ public class RoomRegistry
         return _rooms.TryGetValue(roomId, out var room) ? room : null;
     }
 
-    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<object, Task>? send = null, string? nickname = null)
+    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0)
     {
         lock (_rooms)
         {
             var room = GetRoomById(roomId);
             if (room == null) return JoinResult.NotFound;
-            return JoinRoom(room, playerId, send, nickname);
+            return JoinRoom(room, playerId, send, nickname, character);
         }
     }
 
     // 랜덤 입장 (시스템 기획서 방 화면 랜덤 입장). 들어갈 수 있는 공개 방(판 도중 아님, 꽉 차지 않음) 중 사람이 가장 많은 방에 넣음.
     // 사람이 많은 방에 넣어야 판이 빨리 시작함. 같으면 코드 순. 없으면 공개 방을 새로 만듦. 들어간 방 코드와 새로 만들었는지를 돌려줌
-    public (string Code, bool Created) QuickJoin(Guid playerId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null)
+    public (string Code, bool Created) QuickJoin(Guid playerId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, int character = 0)
     {
         lock (_rooms)
         {
@@ -97,11 +98,11 @@ public class RoomRegistry
                 .FirstOrDefault();
 
             // 고른 뒤 틱 루프가 판을 시작했으면 들어가지 못함. 그때는 새로 만듦
-            if (open != null && JoinRoom(open, playerId, send, nickname) == JoinResult.Joined)
+            if (open != null && JoinRoom(open, playerId, send, nickname, character) == JoinResult.Joined)
             {
                 return (open.RoomId, false);
             }
-            return (AddRoom(playerId, maxPlayers, send, nickname), true);
+            return (AddRoom(playerId, maxPlayers, send, nickname, character: character), true);
         }
     }
 
@@ -165,11 +166,11 @@ public class RoomRegistry
     //     }
     // }
 
-    private JoinResult JoinRoom(Room room, Guid playerId, Func<object, Task>? send, string? nickname)
+    private JoinResult JoinRoom(Room room, Guid playerId, Func<object, Task>? send, string? nickname, int character)
     {
         try
         {
-            room.AddPlayer(playerId, send, nickname);
+            room.AddPlayer(playerId, send, nickname, character);
             return JoinResult.Joined;
         }
         catch (InvalidOperationException)

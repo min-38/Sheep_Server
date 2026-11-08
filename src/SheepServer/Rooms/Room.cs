@@ -105,8 +105,9 @@ public class Room
         }
     }
 
-    // send는 테스트처럼 보낼 곳이 없으면 null. nickname은 검사를 마친 이름이고, 없으면 임시 이름을 씀
-    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null)
+    // send는 테스트처럼 보낼 곳이 없으면 null. nickname은 검사를 마친 이름이고, 없으면 임시 이름을 씀.
+    // character는 검사를 마친 캐릭터 번호(Character.IsValid)
+    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0)
     {
         lock (_lock)
         {
@@ -120,7 +121,7 @@ public class Room
                 throw new InvalidOperationException("Round in progress.");
             }
 
-            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, FreeColor()));
+            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, FreeColor(), character));
 
             _currentPlayers++;
             ArrangePlayers();
@@ -453,7 +454,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
