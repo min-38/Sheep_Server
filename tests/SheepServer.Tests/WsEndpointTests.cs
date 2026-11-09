@@ -121,6 +121,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         // 앞뒤 공백을 지운 이름과 비공개 여부가 답에 실리고, 목록에는 이름과 인원 제한이 실림 (기술 설계서 메시지 roomCreated, rooms)
         Assert.Equal("먼지 낀 술집", created.GetProperty("name").GetString());
         Assert.False(created.GetProperty("private").GetBoolean());
+        Assert.Equal(4, created.GetProperty("maxPlayers").GetInt32());
         var room = list.GetProperty("rooms").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code);
         Assert.Equal("먼지 낀 술집", room.GetProperty("name").GetString());
         Assert.Equal(4, room.GetProperty("max").GetInt32());
@@ -227,6 +228,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         // 들어온 사람도 칠판에 방 이름과 "비공개"를 적을 수 있게 함 (시스템 기획서 방 화면 방 만들기)
         Assert.Equal("비밀 금광", joined.GetProperty("name").GetString());
         Assert.True(joined.GetProperty("private").GetBoolean());
+        // 들어온 사람도 방 인원 제한만큼 술집 바 좌석을 둠 (SHEEP-115). 없으면 8명
+        Assert.Equal(8, joined.GetProperty("maxPlayers").GetInt32());
     }
 
     [Fact]
