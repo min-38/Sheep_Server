@@ -1659,6 +1659,40 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_CountdownAfterTurnInLobby_EveryoneFacesCenter()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+        _room.Step(lobbyAt);
+        _room.SetAngle(_a, 1.0, 0.3); // 판 끝 직전에 보내 준비 중에 늦게 온 turn
+        _room.SetReady(_a, true);
+        _room.SetReady(_b, true);
+        _room.Step(lobbyAt + 50); // 카운트다운이 정해짐
+
+        // Act
+        var state = StateAt(lobbyAt + 50 + RoundFlow.Lead); // 카운트다운이 시작함
+
+        // Assert
+        // 장전할 때 모두 처음 자리에서 서로 마주 봄 (기술 설계서 결투장 다시 서기)
+        AssertFacesCenterAtStart(state, _a, _b);
+    }
+
+    [Fact]
+    public void Step_CountdownAfterThirdJoins_EveryoneFacesCenter()
+    {
+        // Arrange
+        AddReady(_a, _b, _c); // c가 들어오면 a와 b는 셋의 자리로 옮겨 섬
+        _room.Step(1000); // 카운트다운이 정해짐
+
+        // Act
+        var state = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+
+        // Assert
+        AssertFacesCenterAtStart(state, _a, _b, _c);
+    }
+
+    [Fact]
     public void Step_EveryoneOutOfAmmo_ResultRematchAfterLastShotJudged()
     {
         // Arrange
@@ -2268,6 +2302,19 @@ public class RoomTests
         double dy = player.Y - CenterY;
         Assert.Equal(Math.Sqrt(dx * dx + dy * dy), Math.Cos(player.Angle) * dx + Math.Sin(player.Angle) * dy, Tolerance);
         Assert.True(player.Angle >= 0 && player.Angle < 2 * Math.PI, $"angle {player.Angle}는 turn과 같은 범위(0 이상 2π 미만)여야 함");
+    }
+
+    // ids의 i번째 사람이 그 인원수의 i번 시작 자리에 서서 중심을 보고, 위아래로는 정면을 보는지 봄
+    private static void AssertFacesCenterAtStart(StateMessage state, params Guid[] ids)
+    {
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var spot = StartPlacement.At(ids.Length, i, CenterX, CenterY);
+            var player = Find(state, ids[i]);
+            AssertStandsAt(spot, player);
+            Assert.Equal(spot.Angle, player.Angle, Tolerance);
+            Assert.Equal(0, player.Pitch);
+        }
     }
 
     // 틱 하나를 돌리고 그 틱의 state를 돌려줌

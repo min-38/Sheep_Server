@@ -372,6 +372,18 @@ public class Room
                 }
             }
 
+            // 새 판 카운트다운이 시작하면 모두 제자리에서 중심과 정면을 봄. 준비 중에 늦게 온 turn과, 들고 날 때 자리만 옮기는 ArrangePlayers가
+            // 시작 각도를 바꿔 둠. 자리는 옮기지 않음. 판이 정해진 뒤 나간 사람이 있어도 남은 사람은 그 자리에 섬
+            if (_rematchers == null && _round.Phase != RoundPhase.Countdown && next.Phase == RoundPhase.Countdown)
+            {
+                foreach (var player in _players)
+                {
+                    // Atan2는 -π~π를 돌려줌. 2π를 더한 나머지로 turn과 같은 0 이상 2π 미만으로 맞춤. 0보다 아주 조금 작은 값도 2π가 되지 않음
+                    player.Angle = (Math.Atan2(CenterY - player.Y, CenterX - player.X) + 2 * Math.PI) % (2 * Math.PI);
+                    player.Pitch = 0;
+                }
+            }
+
             // 재대결 카운트다운이 시작하면 재대결하는 사람만 그 인원수로 다시 세우고 장전함. 나머지는 쓰러진 자리에 그대로 둠
             if (_rematchers != null && _round.Phase != RoundPhase.Countdown && next.Phase == RoundPhase.Countdown)
             {
