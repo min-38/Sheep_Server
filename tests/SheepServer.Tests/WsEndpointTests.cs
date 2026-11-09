@@ -215,6 +215,77 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal(0, CharacterOf(state, hostId));
     }
 
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("8")]
+    [InlineData("1.5")]
+    [InlineData("\"0\"")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadColor_Error(string color)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","color":{{color}}}""");
+
+        // 사람 색 번호는 0~7 정수 (기술 설계서 메시지 createRoom color)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("color", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_Color_TakenGivesLowestFree()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","color":5}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이","color":5}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // 방장은 고른 5를 받고, 같은 색을 고른 사람은 거절하지 않고 비어 있는 가장 작은 0을 받음 (기술 설계서 메시지 joinRoom color)
+        var state = await ReceiveWhere(host, m => IsState(m) && ColorOf(m, guestId) != null);
+        Assert.Equal(5, ColorOf(state, hostId));
+        Assert.Equal(0, ColorOf(state, guestId));
+    }
+
+    [Fact]
+    public async Task Dress_OthersSeeCharacterAndColor()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // 대기실에서 바꾸면 다음 state로 방 안 모두에게 감. 답은 없음 (기술 설계서 메시지 dress)
+        await Send(guest, """{"type":"dress","character":6,"color":3}""");
+
+        var state = await ReceiveWhere(host, m => IsState(m) && ColorOf(m, guestId) == 3);
+        Assert.Equal(6, CharacterOf(state, guestId));
+    }
+
+    [Fact]
+    public async Task Dress_NotANumber_IgnoredAndConnectionKeepsWorking()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // 숫자가 아니거나 빠진 값은 통째로 버림. 이것 때문에 연결이 끊기면 다음 dress가 오지 않음
+        await Send(guest, """{"type":"dress","character":"2","color":4}""");
+        await Send(guest, """{"type":"dress","character":2}""");
+        await Send(guest, """{"type":"dress","character":2,"color":4.5}""");
+        await Send(guest, """{"type":"dress","character":2,"color":4}""");
+
+        var state = await ReceiveWhere(host, m => IsState(m) && ColorOf(m, guestId) == 4);
+        Assert.Equal(2, CharacterOf(state, guestId));
+    }
+
     [Fact]
     public async Task JoinRoom_Joined_HasNameAndPrivate()
     {
@@ -828,6 +899,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("character").GetInt32();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 사람 색 번호. 없으면 null
+    static int? ColorOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("color").GetInt32();
             }
         }
         return null;
