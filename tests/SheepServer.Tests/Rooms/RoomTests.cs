@@ -2180,6 +2180,7 @@ public class RoomTests
         var downedBy = Assert.IsType<DownedByMessage>(toB[eliminated + 1]);
         Assert.Equal(_a, downedBy.PlayerId);
         Assert.Equal(duelAt + 100, downedBy.At, Tolerance);
+        Assert.Equal(HitZone.Head, downedBy.Zone); // 쓰러지는 장면에 맞은 부위를 띄움 (SHEEP-119)
         Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<DownedByMessage>());
         Assert.Empty(TickLoop.MessagesFor(_c, messages).OfType<DownedByMessage>());
     }
@@ -2201,6 +2202,7 @@ public class RoomTests
         var downedBy = Assert.Single(TickLoop.MessagesFor(_c, messages).OfType<DownedByMessage>());
         Assert.Equal(_b, downedBy.PlayerId);
         Assert.Equal(duelAt + 150, downedBy.At, Tolerance);
+        Assert.Equal(HitZone.Body, downedBy.Zone);
     }
 
     [Fact]

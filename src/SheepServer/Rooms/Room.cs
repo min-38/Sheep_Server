@@ -567,7 +567,7 @@ public class Room
                 messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot));
 
                 // 판정이 쏜 시각 순서라 이 발사가 마지막으로 맞힌 발사임. 쓰러진 사람의 다시 보기에만 쓰여 관전자에게 복사하지 않음
-                messages.Add(new Direct(target.Id, new DownedByMessage(outcome.ShooterId, outcome.At)));
+                messages.Add(new Direct(target.Id, new DownedByMessage(outcome.ShooterId, outcome.At, outcome.Zone!.Value)));
             }
             else
             {
