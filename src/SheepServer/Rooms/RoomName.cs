@@ -31,6 +31,6 @@ public static class RoomName
         return length is >= MinLength and <= MaxLength ? name : null;
     }
 
-    // 이름 없이 만든 방과 랜덤 입장으로 새로 만든 방의 이름. 모든 언어에서 같은 영어 이름
+    // 이름 없이 만든 방의 이름. 모든 언어에서 같은 영어 이름
     public static string Default(string nickname) => $"{nickname}'s room";
 }

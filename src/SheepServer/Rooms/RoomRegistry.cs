@@ -85,27 +85,6 @@ public class RoomRegistry
         }
     }
 
-    // 랜덤 입장 (시스템 기획서 방 화면 랜덤 입장). 들어갈 수 있는 공개 방(판 도중 아님, 꽉 차지 않음) 중 사람이 가장 많은 방에 넣음.
-    // 사람이 많은 방에 넣어야 판이 빨리 시작함. 같으면 코드 순. 없으면 공개 방을 새로 만듦. 들어간 방 코드와 새로 만들었는지를 돌려줌
-    public (string Code, bool Created) QuickJoin(Guid playerId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, int character = 0)
-    {
-        lock (_rooms)
-        {
-            var open = _rooms.Values
-                .Where(r => !r.IsPrivate && !r.InRound && r.CurrentPlayers < r.MaxPlayers)
-                .OrderByDescending(r => r.CurrentPlayers)
-                .ThenBy(r => r.RoomId, StringComparer.Ordinal)
-                .FirstOrDefault();
-
-            // 고른 뒤 틱 루프가 판을 시작했으면 들어가지 못함. 그때는 새로 만듦
-            if (open != null && JoinRoom(open, playerId, send, nickname, character) == JoinResult.Joined)
-            {
-                return (open.RoomId, false);
-            }
-            return (AddRoom(playerId, maxPlayers, send, nickname, character: character), true);
-        }
-    }
-
     // 대기실 보기의 공개 방 목록 (시스템 기획서 방 화면 대기실 보기). 비공개 방은 넣지 않음.
     // 들어갈 수 있는 방(판 도중 아님, 꽉 차지 않음)을 위에, 그 안에서는 사람이 많은 방부터, 같으면 코드 순
     public List<RoomSummary> List()
