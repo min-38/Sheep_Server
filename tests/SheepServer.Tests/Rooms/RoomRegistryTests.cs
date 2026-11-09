@@ -324,7 +324,7 @@ public class RoomRegistryTests
         _registry.AddRoom(_hostId, 8, null, "보안관");
 
         // Assert
-        Assert.Equal("보안관의 방", Assert.Single(_registry.List()).Name);
+        Assert.Equal("보안관's room", Assert.Single(_registry.List()).Name);
     }
 
     [Fact]
@@ -344,9 +344,9 @@ public class RoomRegistryTests
         _registry.QuickJoin(_hostId, 8, null, "떠돌이");
 
         // Assert
-        // 시스템 기획서 방 화면 랜덤 입장: 새로 만드는 방은 "닉네임의 방", 8명, 공개
+        // 시스템 기획서 방 화면 랜덤 입장: 새로 만드는 방은 "닉네임's room", 8명, 공개
         var room = Assert.Single(_registry.List());
-        Assert.Equal("떠돌이의 방", room.Name);
+        Assert.Equal("떠돌이's room", room.Name);
         Assert.Equal(8, room.Max);
     }
 }

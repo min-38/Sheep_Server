@@ -43,7 +43,18 @@ public class RoomNameTests
     public void Default_NicknameRoom()
     {
         // Assert
-        // 랜덤 입장으로 만들어지거나 이름 없이 만든 방
-        Assert.Equal("보안관의 방", RoomName.Default("보안관"));
+        // 랜덤 입장으로 만들어지거나 이름 없이 만든 방. 모든 언어에서 같은 영어 이름 (시스템 기획서 방 화면 방 만들기 창)
+        Assert.Equal("보안관's room", RoomName.Default("보안관"));
+    }
+
+    [Fact]
+    public void Default_LongestNickname_FitsRoomNameRule()
+    {
+        // Act
+        string name = RoomName.Default("🎲🎲🎲🎲🎲🎲🎲🎲");
+
+        // Assert
+        // 닉네임은 8자까지라 8자 + "'s room" 7자 = 15자로 방 이름 규칙(16자) 안임
+        Assert.Equal(name, RoomName.Normalize(name));
     }
 }
