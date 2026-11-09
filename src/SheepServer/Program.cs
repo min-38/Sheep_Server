@@ -198,21 +198,6 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                             return [new { type = "error", reason = "notFound" }];
                     }
 
-                case "quickJoin":
-                    if (!ReadNickname(root, out string? quickName))
-                    {
-                        return [new { type = "error", reason = "nickname" }];
-                    }
-                    if (!ReadCharacter(root, out int quickCharacter))
-                    {
-                        return [new { type = "error", reason = "character" }];
-                    }
-                    // 먼저 나감. 그러지 않으면 내가 있는 방을 골라 같은 방에 같은 사람이 둘 들어감
-                    registry.LeaveRoom(roomId, playerId);
-                    var (quickCode, created) = registry.QuickJoin(playerId, MaxPlayers, Enqueue, quickName, quickCharacter);
-                    roomId = quickCode;
-                    return [Entered(created ? "roomCreated" : "joined", quickCode), mapMessage];
-
                 case "listRooms":
                     // 방에 들어가기 전에도 받음. 첫 화면의 대기실 보기가 열려 있는 동안 2초마다 보냄
                     return [new { type = "rooms", rooms = registry.List() }];
