@@ -141,7 +141,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "character" }];
                     }
-                    // 방 이름은 없으면 "닉네임의 방", 있으면 규칙에 맞아야 함 (시스템 기획서 방 화면 방 만들기)
+                    // 방 이름은 없으면 "닉네임's room", 있으면 규칙에 맞아야 함 (시스템 기획서 방 화면 방 만들기)
                     string? roomName = null;
                     if (root.TryGetProperty("name", out var nameProp))
                     {

@@ -47,8 +47,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
 
     [Theory]
     [InlineData("\"가\"")]
-    [InlineData("\"보안관!\"")]
-    [InlineData("\"보 안\"")]
+    [InlineData("\"보\\u200B안\"")]
+    [InlineData("\"가나다라마바사아자\"")]
     [InlineData("7")]
     [InlineData("null")]
     public async Task CreateRoom_BadNickname_Error(string nickname)
@@ -101,7 +101,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
         string code = created.GetProperty("code").GetString()!;
 
-        var reply = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"보 안"}""");
+        var reply = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"a\u202Eb"}""");
         await Task.Delay(100); // 그사이 틱이 지나 새 state가 옴
         var state = await ReceiveWhere(host, IsState);
 
@@ -359,7 +359,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     {
         using var ws = await Connect();
 
-        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관!"}""");
+        var reply = await Request(ws, """{"type":"quickJoin","nickname":"보안관\u3164"}""");
 
         Assert.Equal("error", reply.GetProperty("type").GetString());
         Assert.Equal("nickname", reply.GetProperty("reason").GetString());
