@@ -6,6 +6,14 @@ using SheepServer.Rooms;
 public class CharacterTests
 {
     [Fact]
+    public void Count_EightCharacters()
+    {
+        // Assert
+        // 0 찰스부터 7 디에고까지 (시스템 기획서 캐릭터 목록, SHEEP-117)
+        Assert.Equal(8, Character.Count);
+    }
+
+    [Fact]
     public void IsValid_FirstCharacter_True()
     {
         // Act
