@@ -28,7 +28,7 @@ public class RoomRegistry
     }
 
     // Create
-    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임의 방".
+    // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임's room".
     // character는 검사를 마친 방장의 캐릭터 번호
     public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null, int character = 0)
     {
