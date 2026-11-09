@@ -103,11 +103,11 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
             || (c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out character) && Character.IsValid(character));
     }
 
-    // 방에 들어간 답(roomCreated, joined). 칠판에 적을 방 이름과 비공개 여부를 함께 줌 (기술 설계서 메시지 roomCreated)
+    // 방에 들어간 답(roomCreated, joined). 칠판에 적을 방 이름과 비공개 여부, 바 좌석 수가 되는 인원 제한을 함께 줌 (기술 설계서 메시지 roomCreated)
     object Entered(string type, string code)
     {
         var room = registry.GetRoomById(code)!;
-        return new { type, code, playerId, name = room.Name, @private = room.IsPrivate };
+        return new { type, code, playerId, name = room.Name, @private = room.IsPrivate, maxPlayers = room.MaxPlayers };
     }
 
     async Task<object[]> Handle(string text)
