@@ -545,7 +545,7 @@ public class RoomTests
         var second = _room.Step(1050);
 
         // Assert
-        AssertAnnounces(first, RoundPhase.Countdown, 1000 + RoundFlow.Lead);
+        AssertAnnounces(first, RoundPhase.Countdown, 1000 + RoundFlow.EnterDuration);
         Assert.Single(first.OfType<StateMessage>()); // state는 알림과 별개로 틱마다 감
         Assert.Empty(second.OfType<PhaseMessage>()); // 같은 알림을 틱마다 되풀이하지 않음
     }
@@ -571,7 +571,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         _room.Step(1000);
-        double countdownAt = 1000 + RoundFlow.Lead;
+        double countdownAt = 1000 + RoundFlow.EnterDuration;
         double walkAt = countdownAt + RoundFlow.CountdownDuration;
 
         // Act
@@ -652,7 +652,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b, _c);
         var before = StateAt(1000); // 판이 정해짐
-        double countdownAt = 1000 + RoundFlow.Lead;
+        double countdownAt = 1000 + RoundFlow.EnterDuration;
 
         // Act
         _room.RemovePlayer(_c);
@@ -843,11 +843,11 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         _room.Step(1000); // 카운트다운이 정해짐
-        var before = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+        var before = StateAt(1000 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Act
         _room.SetAngle(_a, 1.0);
-        var state = StateAt(1000 + RoundFlow.Lead + 50);
+        var state = StateAt(1000 + RoundFlow.EnterDuration + 50);
 
         // Assert
         // "시작!" 전에 온 돌기는 버림 (기술 설계서 메시지 turn). 클라도 카운트다운부터 입력을 잠금
@@ -1787,7 +1787,7 @@ public class RoomTests
         _room.Step(lobbyAt + 50); // 카운트다운이 정해짐
 
         // Act
-        var state = StateAt(lobbyAt + 50 + RoundFlow.Lead); // 카운트다운이 시작함
+        var state = StateAt(lobbyAt + 50 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Assert
         // 장전할 때 모두 처음 자리에서 서로 마주 봄 (기술 설계서 결투장 다시 서기)
@@ -1802,7 +1802,7 @@ public class RoomTests
         _room.Step(1000); // 카운트다운이 정해짐
 
         // Act
-        var state = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+        var state = StateAt(1000 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Assert
         AssertFacesCenterAtStart(state, _a, _b, _c);
@@ -2381,7 +2381,7 @@ public class RoomTests
     private static double ScheduleWalk(Room room, double from = 1000)
     {
         room.Step(from); // 카운트다운이 정해짐
-        double countdownAt = from + RoundFlow.Lead;
+        double countdownAt = from + RoundFlow.EnterDuration;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
         return countdownAt + RoundFlow.CountdownDuration;
     }

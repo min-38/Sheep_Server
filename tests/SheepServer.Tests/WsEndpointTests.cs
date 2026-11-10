@@ -697,7 +697,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal(at, guestPhase.GetProperty("at").GetDouble());
         // at은 serverTime의 ts와 같은 시계라야 클라가 내 시계로 바꿀 수 있음.
         // 아래쪽은 기다린 300ms에서 타이머 오차를 조금 뺌. 위쪽 1초는 틱 간격과 테스트 지연을 넉넉히 봄
-        Assert.InRange(at, ts + 250 + RoundFlow.Lead, ts + 300 + RoundFlow.Lead + 1000);
+        Assert.InRange(at, ts + 250 + RoundFlow.EnterDuration, ts + 300 + RoundFlow.EnterDuration + 1000);
     }
 
     [Fact]
@@ -897,7 +897,9 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         await Send(host, """{"type":"ready","ready":true}""");
         await Send(guest, """{"type":"ready","ready":true}""");
 
-        var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromSeconds(15));
+        // 준비부터 결투 알림까지 가장 오래 걸리는 시간에 2초 여유를 둠. 판 흐름 시간을 바꿔도 이 값을 고치지 않게 상수로 셈
+        var longest = RoundFlow.EnterDuration + RoundFlow.CountdownDuration + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait + 2000;
+        var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromMilliseconds(longest));
         double duelAt = duel.GetProperty("at").GetDouble();
         var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
         double ts = serverTime.GetProperty("ts").GetDouble();

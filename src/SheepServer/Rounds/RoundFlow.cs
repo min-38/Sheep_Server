@@ -9,6 +9,11 @@ public static class RoundFlow
     // ponytail: 임시 값. 기술 설계서 미정 사항의 "미리 알리는 시간"을 플레이해 보며 정하면 그 값으로 바꿈
     public const double Lead = 500;
 
+    // ms. 모두 준비한 뒤 카운트다운까지. 그동안 클라가 술집 바에서 천천히 뒤돌아 스윙 도어를 열고 결투장으로 곧장 나서는 장면을 보여 줌
+    // (사용자 결정 2026-11-10, SHEEP-137). 클라 entrance.ts ENTER_MS와 같아야 함. Lead보다 길어 카운트다운 알림이 늦지 않음.
+    // ponytail: 임시 값. 플레이해 보며 정함
+    public const double EnterDuration = 3000;
+
     // ms. 카운트다운 길이. 그동안 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
     // 장전 모습과 소리는 클라가 이 시각에서 잼
     public const double CountdownDuration = 4000;
@@ -49,8 +54,8 @@ public static class RoundFlow
             // 모두 준비했는지는 준비 중에만 봄. 결투 다음(승리, 재대결)은 결과가 정해질 때 Room이 정함
             if (current.Phase == RoundPhase.Lobby && players >= 2 && ready == players)
             {
-                // 아직 준비 중임. 카운트다운을 Lead 뒤로 정해 두고 그때 넘어감
-                return new Round(RoundPhase.Lobby, RoundPhase.Countdown, now + Lead);
+                // 아직 준비 중임. 카운트다운을 술집을 나서는 장면 뒤로 정해 두고 그때 넘어감
+                return new Round(RoundPhase.Lobby, RoundPhase.Countdown, now + EnterDuration);
             }
 
             // 걷기가 시작할 때 정해 둔 결투 시각을 Lead 전에야 알림. Next가 생기면 Room이 알림을 보냄
