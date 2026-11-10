@@ -84,7 +84,7 @@ public class RoundFlowTests
 
         // Assert
         // 결투 시각은 돌고 다 걸은 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
-        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
+        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
     }
 
     [Fact]

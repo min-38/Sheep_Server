@@ -898,7 +898,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         await Send(guest, """{"type":"ready","ready":true}""");
 
         // 준비부터 결투 알림까지 가장 오래 걸리는 시간에 2초 여유를 둠. 판 흐름 시간을 바꿔도 이 값을 고치지 않게 상수로 셈
-        var longest = RoundFlow.EnterDuration + RoundFlow.CountdownDuration + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait + 2000;
+        var longest = RoundFlow.EnterDuration + RoundFlow.CountdownDuration + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait + 2000;
         var duel = await ReceiveWhere(host, m => IsPhase(m) && m.GetProperty("phase").GetString() == "duel", TimeSpan.FromMilliseconds(longest));
         double duelAt = duel.GetProperty("at").GetDouble();
         var serverTime = await Request(host, """{"type":"clockSync","t0":0}""");
