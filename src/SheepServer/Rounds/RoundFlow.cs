@@ -42,9 +42,13 @@ public static class RoundFlow
     // 클라가 남은 시간을 보여 줄 때(round.ts DUEL_LIMIT, SHEEP-64) 같은 값을 써야 함. 5초는 사용자 결정 (2026-11-10, SHEEP-127)
     public const double DuelLimit = 5000;
 
-    // ms. 판 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 승리면 준비 중으로, 다음 라운드면 카운트다운으로 넘어감.
+    // ms. 재대결 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 다음 라운드 카운트다운으로 넘어감.
     // ponytail: 임시 값. 플레이해 보며 정함
     public const double ResultDuration = 3000;
+
+    // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니를 보여 준 뒤
+    // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 8500;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)

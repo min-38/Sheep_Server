@@ -698,7 +698,7 @@ public class Room
             _rematchers = result.PlayerIds;
             _rematchRounds = result.Rounds;
         }
-        _round = new Round(RoundPhase.Duel, next, now + RoundFlow.ResultDuration);
+        _round = new Round(RoundPhase.Duel, next, now + (next == RoundPhase.Lobby ? RoundFlow.WinResultDuration : RoundFlow.ResultDuration));
 
         // Step은 판이 바뀐 틱에만 다음 단계를 알리는데, 여기서는 판을 직접 바꿔 Step이 바뀐 것을 모름. 그래서 여기서 알림
         messages.Add(result);
