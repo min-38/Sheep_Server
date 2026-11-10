@@ -27,8 +27,8 @@ public static class RoundFlow
     public const double MaxDuelWait = 3000;
 
     // ms. 결투 시각("시작!")부터 이 시간 안에 쏘지 않은 사람은 자살로 쓰러짐 (시스템 기획서 판 흐름 시간).
-    // 클라가 남은 시간을 보여 줄 때(round.ts DUEL_LIMIT, SHEEP-64) 같은 값을 써야 함. ponytail: 임시 값. 플레이해 보며 정함
-    public const double DuelLimit = 10000;
+    // 클라가 남은 시간을 보여 줄 때(round.ts DUEL_LIMIT, SHEEP-64) 같은 값을 써야 함. 5초는 사용자 결정 (2026-11-10, SHEEP-127)
+    public const double DuelLimit = 5000;
 
     // ms. 판 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 승리면 준비 중으로, 다음 라운드면 카운트다운으로 넘어감.
     // ponytail: 임시 값. 플레이해 보며 정함
