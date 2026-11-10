@@ -6,8 +6,10 @@ namespace SheepServer.Shooting;
 public static class HitScan
 {
     // 칸. 사람을 몸과 머리 두 원기둥으로 봄. 7.5등신 틀에서 키를 0.9칸으로 보고 잼. 모자는 판정에 넣지 않음 (시스템 기획서 리볼버, SHEEP-89).
-    // 클라 hitcard.ts의 BODY, HEAD와 같은 값이어야 사격 결과 카드(SHEEP-62)의 총알 구멍이 맞은 자리에 찍힘. ponytail: 임시 값. 플레이해 보며 정함
-    public const double EyeHeight = 0.5;
+    // 클라 hitcard.ts의 BODY, HEAD와 같은 값이어야 사격 결과 카드(SHEEP-62)의 총알 구멍이 맞은 자리에 찍힘. ponytail: 임시 값. 플레이해 보며 정함.
+    // 눈높이는 캐릭터 눈 자리(27.75~28.1블록 × 0.03칸)라 머리 높이임. 가슴 높이(0.5)에서 올려다보던 것을 고침 (SHEEP-158).
+    // 쏜 광선이 여기서 나가므로 클라 bullet.ts EYE_HEIGHT와 같아야 함
+    public const double EyeHeight = 0.84;
     public const double BodyRadius = 0.15;
     public const double BodyTop = 0.78;
     public const double HeadRadius = 0.05;
