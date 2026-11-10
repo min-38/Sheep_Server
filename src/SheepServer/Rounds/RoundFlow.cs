@@ -17,16 +17,21 @@ public static class RoundFlow
     // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
     public const double TurnDuration = 1000;
 
+    // ms. 다 돈 뒤 첫 걸음까지 바깥을 보고 제자리에 서서 뜸을 들이는 시간 (사용자 결정 2026-11-10, SHEEP-141).
+    // 클라 round.ts TURN_PAUSE와 같아야 함. ponytail: 임시 값(1초). 플레이해 보며 정함
+    public const double TurnPause = 1000;
+
     // 모두 멈추지 않고 Steps걸음을 StepInterval(ms)마다 StepLength(칸)씩 걸음 (사용자 결정 2026-11-10, SHEEP-120).
-    // 걸음 길이는 마주 선 거리 2 × (StartPlacement.Radius + WalkDistance) = 8칸을 그대로 두려고 0.3칸
+    // 걸음 길이는 마주 선 거리 2 × (StartPlacement.Radius + WalkDistance) = 8칸을 그대로 두려고 0.3칸.
+    // 걸음 간격 0.7초는 무거운 걸음으로 긴장을 주려고 0.5초에서 늦춤 (사용자 결정 2026-11-10, SHEEP-141)
     public const int Steps = 10;
     public const double StepLength = 0.3;
-    public const double StepInterval = 500;
+    public const double StepInterval = 700;
 
     // 칸. 다 걸으면 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간)
     public const double WalkDistance = Steps * StepLength;
 
-    // ms. 다 돈 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
+    // ms. 뜸을 들인 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
     public const double WalkDuration = Steps * StepInterval;
 
     // ms. 걷기가 끝나고 "시작!"까지 무작위로 기다리는 시간의 범위 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
@@ -70,8 +75,8 @@ public static class RoundFlow
         return current.Next switch
         {
             RoundPhase.Countdown => new Round(RoundPhase.Countdown, RoundPhase.Walk, current.NextAt + CountdownDuration),
-            // 결투 시각은 돌고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
-            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + WalkDuration + DuelWait(seed)),
+            // 결투 시각은 돌고 뜸 들이고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
+            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + TurnPause + WalkDuration + DuelWait(seed)),
             // 결투 다음은 결과가 정해져야 알 수 있어 시각은 쓰지 않음
             RoundPhase.Duel => new Round(RoundPhase.Duel, null, 0),
             // 승리 결과를 다 보여 주면 준비 중으로 돌아감. 다음 판은 다시 모두 준비할 때 정함
