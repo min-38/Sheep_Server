@@ -9,7 +9,7 @@ public class ShotResultMessageTests
     public void Serialize_Head_UsesMessageTableNames()
     {
         // Arrange
-        var outcome = new ShotOutcome(Guid.NewGuid(), 100, Guid.NewGuid(), HitZone.Head, 0.8, -0.05, true);
+        var outcome = new ShotOutcome(Guid.NewGuid(), 100, Guid.NewGuid(), HitZone.Head, 0.8, -0.05, true, 6.45, 5.5);
 
         // Act
         string json = JsonSerializer.Serialize(new ShotResultMessage(outcome), JsonSerializerOptions.Web);
@@ -23,7 +23,7 @@ public class ShotResultMessageTests
     public void Serialize_Miss_NullsExceptDown()
     {
         // Arrange
-        var outcome = new ShotOutcome(Guid.NewGuid(), 100, null, null, 0, 0, false);
+        var outcome = new ShotOutcome(Guid.NewGuid(), 100, null, null, 0, 0, false, 0, 0);
 
         // Act
         string json = JsonSerializer.Serialize(new ShotResultMessage(outcome), JsonSerializerOptions.Web);

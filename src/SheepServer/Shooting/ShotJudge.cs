@@ -64,7 +64,7 @@ public static class ShotJudge
             var hit = HitScan.FirstHit(x, y, shot.Angle, shot.Pitch, targets, map);
             if (hit == null)
             {
-                outcomes.Add(new ShotOutcome(shot.ShooterId, shot.At, null, null, 0, 0, false));
+                outcomes.Add(new ShotOutcome(shot.ShooterId, shot.At, null, null, 0, 0, false, 0, 0));
                 continue;
             }
 
@@ -79,7 +79,7 @@ public static class ShotJudge
             {
                 downAt[hit.Id] = shot.At;
             }
-            outcomes.Add(new ShotOutcome(shot.ShooterId, shot.At, hit.Id, hit.Zone, hit.Height, hit.Offset, down));
+            outcomes.Add(new ShotOutcome(shot.ShooterId, shot.At, hit.Id, hit.Zone, hit.Height, hit.Offset, down, hit.X, hit.Y));
         }
         return outcomes;
     }

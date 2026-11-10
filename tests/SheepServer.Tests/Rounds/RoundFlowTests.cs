@@ -43,6 +43,14 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void DuelLimit_FiveSeconds()
+    {
+        // Assert
+        // 결투 시각부터 5초 안에 쏘지 않으면 시간 초과로 쓰러짐 (시스템 기획서 판 흐름 시간, SHEEP-127)
+        Assert.Equal(5000, RoundFlow.DuelLimit);
+    }
+
+    [Fact]
     public void Advance_BeforeScheduledTime_Unchanged()
     {
         // Arrange
@@ -73,8 +81,8 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Countdown, RoundPhase.Walk, 4500), 4500, 2, 2, Seed);
 
         // Assert
-        // 결투 시각은 걷기가 끝난 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
-        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
+        // 결투 시각은 돌고 다 걸은 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
+        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
     }
 
     [Fact]
