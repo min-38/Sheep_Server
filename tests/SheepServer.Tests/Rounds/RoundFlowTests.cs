@@ -258,6 +258,16 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void WinResultDuration_LongerThanVictorySong()
+    {
+        // Assert
+        // 승리 곡 Quickest Hand in Town(9.88초)이 판 끝 포스터부터 끝까지 나온 뒤 준비 중으로 돌아감 (SHEEP-150).
+        // 클라 ceremony.ts는 포스터 4초, 걸어감과 닫힘 4초, 받은 돈 자막 2초로 나눔
+        Assert.Equal(10000, RoundFlow.WinResultDuration);
+        Assert.True(RoundFlow.WinResultDuration >= 9880);
+    }
+
+    [Fact]
     public void DuelWait_SameSeed_SameWait()
     {
         // Act
