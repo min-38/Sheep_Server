@@ -12,7 +12,7 @@ public class StateMessageTests
     public void Serialize_PoseUsesMessageTableNames(Pose pose, string name)
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0, 0, 0, 0, 0, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, pose, false, "보안관", 0, 0, 0, 0, 0, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -27,7 +27,7 @@ public class StateMessageTests
     public void Serialize_NicknameAndColor()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3, 0, 0, 0, 0, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, true, "보안관", 3, 0, 0, 0, 0, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -43,7 +43,7 @@ public class StateMessageTests
     public void Serialize_Wins()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 2, 0, 0, 0, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 2, 0, 0, 0, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -58,7 +58,7 @@ public class StateMessageTests
     public void Serialize_Pitch()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0.25, 0, 0, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0.25, 0, 0, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -73,7 +73,7 @@ public class StateMessageTests
     public void Serialize_Character()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 0, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 0, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -88,7 +88,7 @@ public class StateMessageTests
     public void Serialize_Seat()
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 2, Hand.Right);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 2, Hand.Right, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -105,7 +105,7 @@ public class StateMessageTests
     public void Serialize_HandUsesMessageTableNames(Hand hand, string name)
     {
         // Arrange
-        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 0, hand);
+        var player = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 3, 0, 0, 0, 0, hand, null);
 
         // Act
         using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [player]), JsonSerializerOptions.Web));
@@ -114,5 +114,22 @@ public class StateMessageTests
         // Assert
         // 기술 설계서 메시지 state: 총을 든 손은 숫자가 아니라 이름으로 감 (SHEEP-133)
         Assert.Equal(name, sent.GetProperty("hand").GetString());
+    }
+
+    [Fact]
+    public void Serialize_DrawnAt()
+    {
+        // Arrange
+        var drawn = new PlayerState(Guid.NewGuid(), 1.5, 2.5, 0.5, Pose.Stand, false, "보안관", 0, 0, 0, 0, 0, Hand.Right, 12345.5);
+        var holstered = drawn with { DrawnAt = null };
+
+        // Act
+        using var a = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [drawn]), JsonSerializerOptions.Web));
+        using var b = JsonDocument.Parse(JsonSerializer.Serialize(new StateMessage(1, [holstered]), JsonSerializerOptions.Web));
+
+        // Assert
+        // 기술 설계서 메시지 state: 총을 뽑기 시작한 시각(서버 시계), 안 뽑았으면 null (SHEEP-123)
+        Assert.Equal(12345.5, a.RootElement.GetProperty("players")[0].GetProperty("drawnAt").GetDouble());
+        Assert.Equal(JsonValueKind.Null, b.RootElement.GetProperty("players")[0].GetProperty("drawnAt").ValueKind);
     }
 }

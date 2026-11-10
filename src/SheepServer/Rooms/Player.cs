@@ -56,6 +56,9 @@ public class Player
     // 마지막으로 받아들인 발사의 쏜 시각(ms, 서버 시계). 아직 안 쐈으면 null
     public double? LastShotAt { get; set; }
 
+    // 이번 라운드에 D 키로 총을 뽑기 시작한 시각(ms, 서버 시계). 아직 안 뽑았으면 null. 다른 사람이 뽑는 모습을 그리게 state에 실음 (SHEEP-123)
+    public double? DrawnAt { get; set; }
+
     // 맞은 반샷 수. 몸을 맞으면 늘고 ShotJudge.WoundsToDown에 닿으면 쓰러짐. 판이 끝날 때까지 남음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
     public int Wounds { get; set; }
 

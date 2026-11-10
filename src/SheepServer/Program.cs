@@ -299,6 +299,14 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
+                case "draw":
+                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 결투 중인지와 시각 검사는 Room.Draw가 함
+                    if (root.TryGetProperty("at", out var drawAtProp) && drawAtProp.ValueKind == JsonValueKind.Number && drawAtProp.TryGetDouble(out double drawAt))
+                    {
+                        registry.GetRoomById(roomId)?.Draw(playerId, drawAt, ServerClock.Now);
+                    }
+                    return [];
+
                 case "stop":
                     // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 걷는 중인지와 시각 검사는 Room.Stop이 함
                     if (root.TryGetProperty("at", out var stopAtProp) && stopAtProp.ValueKind == JsonValueKind.Number && stopAtProp.TryGetDouble(out double stopAt))
