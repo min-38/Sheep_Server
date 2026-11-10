@@ -277,8 +277,35 @@ public class RoundFlowTests
             double wait = RoundFlow.DuelWait(seed);
 
             // Assert
-            Assert.InRange(wait, RoundFlow.MinDuelWait, RoundFlow.MaxDuelWait); // 시스템 기획서 판 흐름 시간
+            Assert.InRange(wait, 100, 10000); // 0.1~10초 (시스템 기획서 판 흐름 시간, 사용자 결정 2026-11-11, SHEEP-156)
         }
+    }
+
+    [Fact]
+    public void DuelWait_ManySeeds_ShortAndLongBothHappen()
+    {
+        // Act
+        var waits = Enumerable.Range(0, 1000).Select(RoundFlow.DuelWait).ToList();
+
+        // Assert
+        // 1~3초 안에만 있으면 시작 시각을 짐작하기 쉬움 (SHEEP-156)
+        Assert.Contains(waits, w => w < 1000);
+        Assert.Contains(waits, w => w > 3000);
+    }
+
+    [Fact]
+    public void Advance_ShortestDuelWait_AnnouncedBeforeDuel()
+    {
+        // Arrange
+        // 대기가 가장 짧으면 결투 시각이 걷기가 끝나고 0.1초 뒤라 Lead 전 알림은 아직 걷는 중에 감
+        double walkEnd = 10000;
+        var walk = new Round(RoundPhase.Walk, null, walkEnd + 100);
+
+        // Act
+        var round = RoundFlow.Advance(walk, walkEnd + 100 - RoundFlow.Lead, 2, 2, Seed);
+
+        // Assert
+        Assert.Equal(walk with { Next = RoundPhase.Duel }, round);
     }
 
     [Fact]
