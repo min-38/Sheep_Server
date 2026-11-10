@@ -26,6 +26,8 @@ public class RoundFlowTests
         // 카운트다운은 바로 시작하지 않음. 술집 문을 나서는 장면을 보여 줄 EnterDuration 뒤로 잡음 (SHEEP-137).
         // 이 시간은 Lead보다 길어 지연이 큰 사람도 시작 전에 알림을 받음
         Assert.True(RoundFlow.EnterDuration >= RoundFlow.Lead);
+        // 문을 밀고 나가 결투장이 천천히 드러날 때까지 6초 (사용자 결정 2026-11-11, SHEEP-145)
+        Assert.Equal(6000, RoundFlow.EnterDuration);
         Assert.Equal(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1000 + RoundFlow.EnterDuration), round);
     }
 
