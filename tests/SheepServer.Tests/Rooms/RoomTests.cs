@@ -27,11 +27,15 @@ public class RoomTests
     private static readonly double CenterX = ArenaMap.Fixed.Width / 2.0;
     private static readonly double CenterY = ArenaMap.Fixed.Height / 2.0;
 
-    // 다 걸었을 때 머리 가운데를 겨누는 위아래 각도. 둘이면 중심을 사이에 두고 2(R + 걸은 거리), 셋이면 정삼각형 한 변만큼 떨어짐.
-    // 위아래 0으로 쏘면 몸에 맞아 반샷이고, 이 각도면 머리에 맞아 바로 쓰러짐 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
+    // 다 걸었을 때 머리 가운데와 몸 가운데를 겨누는 위아래 각도. 둘이면 중심을 사이에 두고 2(R + 걸은 거리), 셋이면 정삼각형 한 변,
+    // 넷이면 이웃끼리 정사각형 한 변만큼 떨어짐. Head면 머리에 맞아 바로 쓰러지고, Body면 몸에 맞아 반샷임 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷).
+    // 눈높이가 머리 높이라 위아래 0으로 쏘면 머리에 맞음 (SHEEP-158)
     private static readonly double HeadAcross = HeadPitch(2 * (StartPlacement.Radius + RoundFlow.WalkDistance));
     private static readonly double HeadInTriangle = HeadPitch(Math.Sqrt(3) * (StartPlacement.Radius + RoundFlow.WalkDistance));
     private static readonly double HeadInSquare = HeadPitch(Math.Sqrt(2) * (StartPlacement.Radius + RoundFlow.WalkDistance));
+    private static readonly double BodyAcross = BodyPitch(2 * (StartPlacement.Radius + RoundFlow.WalkDistance));
+    private static readonly double BodyInTriangle = BodyPitch(Math.Sqrt(3) * (StartPlacement.Radius + RoundFlow.WalkDistance));
+    private static readonly double BodyInSquare = BodyPitch(Math.Sqrt(2) * (StartPlacement.Radius + RoundFlow.WalkDistance));
 
     private readonly Room _room = new("TestRoom", 4);
     private readonly Guid _a = Guid.NewGuid();
@@ -919,7 +923,7 @@ public class RoomTests
         _room.AddPlayer(_b);
 
         // Act
-        var messages = _room.Fire(_a, Math.PI, 0, 0, 0);
+        var messages = _room.Fire(_a, Math.PI, BodyAcross, 0, 0);
 
         // Assert
         Assert.Empty(messages); // 결투 단계가 아니면 버림 (기술 설계서 메시지 fire)
@@ -934,7 +938,7 @@ public class RoomTests
         var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
 
         // Act
-        var messages = _room.Fire(_a, Math.PI, 0, duelAt - 1, duelAt - 1);
+        var messages = _room.Fire(_a, Math.PI, BodyAcross, duelAt - 1, duelAt - 1);
 
         // Assert
         Assert.Empty(messages); // 다 걷고 "시작!"을 기다리는 동안 쏘면 버림
@@ -950,7 +954,7 @@ public class RoomTests
 
         // Act
         // 결투 시각은 지났지만 그 시각의 틱은 아직 돌지 않음. 클라는 자기 시계로 "시작!"을 보고 쏘므로 틱보다 먼저 올 수 있음
-        var messages = _room.Fire(_a, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 10);
+        var messages = _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn, duelAt + Drawn + 10);
 
         // Assert
         Assert.NotEmpty(messages);
@@ -964,7 +968,7 @@ public class RoomTests
         double duelAt = StartDuelWith(_a, _b, _c); // 셋이어야 b가 쓰러져도 결과 없이 결투가 이어짐
 
         // Act
-        var messages = _room.Fire(_a, AToB, 0, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        var messages = _room.Fire(_a, AToB, BodyInTriangle, duelAt + Drawn + 100, duelAt + Drawn + 120);
         var state = StateAt(duelAt + Drawn + 100 + ShotJudge.MaxDelay - 1);
 
         // Assert
@@ -1012,15 +1016,15 @@ public class RoomTests
         // Arrange
         double duelAt = StartDuel();
         double aShot = duelAt + Drawn + 100;
-        double bShot = aShot + ShotJudge.MutualWindow + 1;
+        double bShot = aShot + 1;
         _room.Fire(_b, 0, HeadAcross, bShot, bShot + 10); // b가 a를 겨눠 쏨. 지연이 작아 먼저 도착함
-        _room.Fire(_a, Math.PI, HeadAcross, aShot, aShot + ShotJudge.MaxDelay); // a는 D보다 더 먼저 쐈지만 지연이 W만큼 커 늦게 도착함
+        _room.Fire(_a, Math.PI, HeadAcross, aShot, aShot + ShotJudge.MaxDelay); // a는 더 먼저 쐈지만 지연이 W만큼 커 늦게 도착함
 
         // Act
         var messages = _room.Step(bShot + ShotJudge.MaxDelay);
 
         // Assert
-        // 도착 순서가 아니라 쏜 시각 순서로 판정함. b는 맞고 D가 지난 뒤에 쏘아 그 발사는 무효 (기술 설계서 명중 판정)
+        // 도착 순서가 아니라 쏜 시각 순서로 판정함. b는 맞은 뒤에 쏘아 그 발사는 무효 (기술 설계서 명중 판정)
         Assert.Equal(_b, Assert.Single(messages.OfType<EliminatedMessage>()).PlayerId);
         var state = messages.OfType<StateMessage>().Single();
         Assert.Equal(Pose.Stand, Find(state, _a).Pose);
@@ -1028,27 +1032,44 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_HitBackWithinMutualWindow_BothDownThenRematch()
+    public void Step_HitBackJustAfter_FirstShooterWinsWithoutRematch()
     {
         // Arrange
         double duelAt = StartDuel();
         double aShot = duelAt + Drawn + 100;
-        double bShot = aShot + ShotJudge.MutualWindow;
+        double bShot = aShot + 50;
         _room.Fire(_a, Math.PI, HeadAcross, aShot, aShot + 20);
-        _room.Step(aShot + ShotJudge.MaxDelay); // b가 쓰러졌다고 정함
 
         // Act
-        // b의 발사는 b가 쓰러진 뒤에 도착했지만 맞은 시각에서 D 안에 쐈음 (기술 설계서 명중 판정 함께 쓰러짐)
-        var fired = _room.Fire(_b, 0, HeadAcross, bShot, aShot + ShotJudge.MaxDelay + 20);
-        var hit = _room.Step(bShot + ShotJudge.MaxDelay);
-        double now = bShot + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        // b는 아직 맞은 줄 모르고 a를 겨눠 쏨. 받을 때는 버리지 않음
+        var fired = _room.Fire(_b, 0, HeadAcross, bShot, bShot + 20);
+        double now = aShot + ShotJudge.MaxDelay;
         var decided = _room.Step(now);
 
         // Assert
-        // 아무도 안 남아 함께 쓰러진 둘이 한 발씩 들고 다음 라운드로 감. 결과는 마지막으로 맞은 시각에서 W + D가 지난 틱에 정함
+        // 근소한 차이여도 맞은 뒤에 쏜 발사는 무효라 먼저 쏜 a만 맞힘. 재대결 없이 a가 이기고 결과는 맞은 시각에서 W가 지난 틱에 정함 (SHEEP-160)
         Assert.IsType<ShotMessage>(Assert.Single(fired));
-        Assert.Equal(_a, Assert.Single(hit.OfType<EliminatedMessage>()).PlayerId);
-        Assert.Empty(hit.OfType<ResultMessage>());
+        Assert.Equal(_b, Assert.Single(decided.OfType<EliminatedMessage>()).PlayerId);
+        AssertResult(Assert.Single(decided.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
+        AssertAnnounces(decided, RoundPhase.Lobby, now + RoundFlow.WinResultDuration);
+    }
+
+    [Fact]
+    public void Step_HitBackSameMillisecond_BothDownThenRematch()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double shotAt = duelAt + Drawn + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 30);
+
+        // Act
+        double now = shotAt + ShotJudge.MaxDelay;
+        var decided = _room.Step(now);
+
+        // Assert
+        // 쏜 시각이 ms까지 같아 가를 수 없음. 함께 쓰러진 둘이 한 발씩 들고 다음 라운드로 감 (컨셉 기획서 규칙 함께 쓰러짐, SHEEP-160)
+        Assert.Equal(2, decided.OfType<EliminatedMessage>().Count());
         AssertResult(Assert.Single(decided.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
         AssertAnnounces(decided, RoundPhase.Countdown, now + RoundFlow.ResultDuration);
     }
@@ -1061,7 +1082,7 @@ public class RoomTests
 
         // Act
         // 결투 시각이 지나 도착했지만 쏜 시각은 그 전임 (기술 설계서 명중 판정 쏜 시각 검사)
-        var messages = _room.Fire(_a, Math.PI, 0, duelAt - 1, duelAt + 10);
+        var messages = _room.Fire(_a, Math.PI, BodyAcross, duelAt - 1, duelAt + 10);
 
         // Assert
         Assert.Empty(messages);
@@ -1079,7 +1100,7 @@ public class RoomTests
         var state = StateAt(duelAt + Drawn + 500);
 
         // Assert
-        // 자르지 않으면 a가 먼저 쏜 것이라 b가 쓰러짐. 잘라서 b가 먼저이고, a는 맞고 D가 지난 뒤라 무효
+        // 자르지 않으면 a가 먼저 쏜 것이라 b가 쓰러짐. 잘라서 b가 먼저이고, a는 맞은 뒤라 무효
         Assert.Equal(Pose.Down, Find(state, _a).Pose);
         Assert.Equal(Pose.Stand, Find(state, _b).Pose);
     }
@@ -1096,7 +1117,7 @@ public class RoomTests
         var state = StateAt(duelAt + Drawn + 200 + ShotJudge.MaxDelay);
 
         // Assert
-        // 자르지 않으면 b가 먼저 쏜 것이라 a가 쓰러짐. 잘라서 a가 먼저이고, b는 맞고 D가 지난 뒤라 무효
+        // 자르지 않으면 b가 먼저 쏜 것이라 a가 쓰러짐. 잘라서 a가 먼저이고, b는 맞은 뒤라 무효
         Assert.Equal(Pose.Stand, Find(state, _a).Pose);
         Assert.Equal(Pose.Down, Find(state, _b).Pose);
     }
@@ -1203,7 +1224,7 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuel(); // 모두 결투 시각에 뽑음
-        _room.Fire(_a, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
+        _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn, duelAt + Drawn + 20);
         _room.Fire(_b, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
         double now = duelAt + Drawn + ShotJudge.MaxDelay;
         _room.Step(now);
@@ -1267,7 +1288,7 @@ public class RoomTests
     }
 
     [Fact]
-    public void Fire_ByDownPlayerAfterMutualWindow_Ignored()
+    public void Fire_ByDownPlayerAfterHit_Ignored()
     {
         // Arrange
         // 셋이어야 b가 쓰러져도 결투가 이어짐. 둘이면 a가 이겨 결과 뒤의 발사로 버려짐
@@ -1277,8 +1298,8 @@ public class RoomTests
         _room.Step(hitAt + ShotJudge.MaxDelay); // b가 쓰러짐
 
         // Act
-        double late = hitAt + ShotJudge.MutualWindow + 1;
-        var messages = _room.Fire(_b, BToA, 0, late, late + 20); // 쓰러진 b가 맞고 D가 지난 뒤에 a를 겨눠 쏨
+        double late = hitAt + 1;
+        var messages = _room.Fire(_b, BToA, BodyInTriangle, late, late + 20); // 쓰러진 b가 맞은 뒤에 a를 겨눠 쏨
         var state = StateAt(late + ShotJudge.MaxDelay);
 
         // Assert
@@ -1296,7 +1317,7 @@ public class RoomTests
 
         // Act
         double at = duelAt + Drawn + 100 + ShotJudge.MaxDelay;
-        _room.Fire(_c, CToB, 0, at, at + 20); // a는 한 발을 다 써서 c가 쓰러진 b를 겨눠 쏨
+        _room.Fire(_c, CToB, BodyInTriangle, at, at + 20); // a는 한 발을 다 써서 c가 쓰러진 b를 겨눠 쏨
         var messages = _room.Step(at + ShotJudge.MaxDelay);
 
         // Assert
@@ -1391,7 +1412,7 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, 0, duelAt + Drawn + 100, duelAt + Drawn + 120); // b의 몸을 맞힘
+        _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn + 100, duelAt + Drawn + 120); // b의 몸을 맞힘
 
         // Act
         var messages = _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
@@ -1447,7 +1468,7 @@ public class RoomTests
         // Arrange
         // 첫 라운드: a가 b의 몸을 맞히고 b는 -x 쪽 바깥으로 쏨. 둘 다 살아 다음 라운드로 감
         double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
+        _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn, duelAt + Drawn + 20);
         _room.Fire(_b, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
         double now = duelAt + Drawn + ShotJudge.MaxDelay;
         _room.Step(now);
@@ -1455,7 +1476,7 @@ public class RoomTests
 
         // Act
         // 다음 라운드에 a가 b의 몸을 다시 맞힘
-        _room.Fire(_a, Math.PI, 0, next + Drawn + 100, next + Drawn + 120);
+        _room.Fire(_a, Math.PI, BodyAcross, next + Drawn + 100, next + Drawn + 120);
         var messages = _room.Step(next + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
@@ -1468,21 +1489,23 @@ public class RoomTests
     public void Step_CoFallenRevived_WoundsRevertToRoundStart()
     {
         // Arrange
-        // c와 a가 차례로 b의 몸을 맞혀 b가 쓰러지고, b는 쓰러진 뒤 D 안에 a의 머리를 맞힘.
-        // 살아남은 c가 나가 아무도 안 남고, 함께 쓰러진 a와 b가 다음 라운드로 감
+        // c가 b의 몸을 맞힌 뒤, a가 b의 몸을 맞혀 b가 쓰러지는 같은 ms에 b도 a의 머리를 맞힘.
+        // 살아남은 c가 판정 전에 나가 아무도 안 남고, 함께 쓰러진 a와 b가 다음 라운드로 감
         double duelAt = StartDuelWith(_a, _b, _c);
-        _room.Fire(_c, CToB, 0, duelAt + Drawn + 100, duelAt + Drawn + 120);
-        _room.Fire(_a, AToB, 0, duelAt + Drawn + 150, duelAt + Drawn + 170);
-        _room.Fire(_b, BToA, HeadInTriangle, duelAt + Drawn + 200, duelAt + Drawn + 220);
-        var hit = _room.Step(duelAt + Drawn + 200 + ShotJudge.MaxDelay);
+        _room.Fire(_c, CToB, BodyInTriangle, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay); // b가 반샷 하나를 맞음
+        double both = duelAt + Drawn + 400;
+        _room.Fire(_a, AToB, BodyInTriangle, both, both + 20);
+        _room.Fire(_b, BToA, HeadInTriangle, both, both + 20);
         _room.RemovePlayer(_c);
-        double decided = duelAt + Drawn + 200 + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
-        var result = _room.Step(decided);
+        double decided = both + ShotJudge.MaxDelay;
+        var hit = _room.Step(decided);
+        var result = hit;
         double next = StartNextRound(decided + RoundFlow.ResultDuration);
 
         // Act
         // 다음 라운드에 a가 b의 몸을 맞힘
-        _room.Fire(_a, Math.PI, 0, next + Drawn + 100, next + Drawn + 120);
+        _room.Fire(_a, Math.PI, BodyAcross, next + Drawn + 100, next + Drawn + 120);
         var messages = _room.Step(next + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
@@ -1499,21 +1522,21 @@ public class RoomTests
         // Arrange
         // 첫 라운드: a가 b의 몸을 맞히고 b는 빗나감. b는 반샷 하나를 안고 둘째 라운드를 시작함
         double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
+        _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn, duelAt + Drawn + 20);
         _room.Fire(_b, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
         double now = duelAt + Drawn + ShotJudge.MaxDelay;
         _room.Step(now);
 
-        // 둘째 라운드: a가 b의 몸을 맞혀 쓰러뜨리고, b는 D 안에 a의 머리를 맞혀 함께 쓰러짐
+        // 둘째 라운드: a가 b의 몸을 맞혀 쓰러뜨리는 같은 ms에 b도 a의 머리를 맞혀 함께 쓰러짐
         double second = StartNextRound(now + RoundFlow.ResultDuration);
-        _room.Fire(_a, Math.PI, 0, second + Drawn, second + Drawn + 20);
-        _room.Fire(_b, 0, HeadAcross, second + Drawn + 50, second + Drawn + 70);
-        double decided = second + Drawn + 50 + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        _room.Fire(_a, Math.PI, BodyAcross, second + Drawn, second + Drawn + 20);
+        _room.Fire(_b, 0, HeadAcross, second + Drawn, second + Drawn + 30);
+        double decided = second + Drawn + ShotJudge.MaxDelay;
         var result = _room.Step(decided);
         double third = StartNextRound(decided + RoundFlow.ResultDuration);
 
         // Act
-        _room.Fire(_a, Math.PI, 0, third + Drawn, third + Drawn + 20);
+        _room.Fire(_a, Math.PI, BodyAcross, third + Drawn, third + Drawn + 20);
         var messages = _room.Step(third + Drawn + ShotJudge.MaxDelay);
 
         // Assert
@@ -1528,13 +1551,13 @@ public class RoomTests
         // Arrange
         // 첫 라운드: a가 b의 몸을 맞히고 b는 빗나감. 둘째 라운드: b가 a의 머리를 맞혀 반샷을 안은 채 이김
         double duelAt = StartDuel();
-        _room.Fire(_a, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
+        _room.Fire(_a, Math.PI, BodyAcross, duelAt + Drawn, duelAt + Drawn + 20);
         _room.Fire(_b, Math.PI, 0, duelAt + Drawn, duelAt + Drawn + 20);
         double now = duelAt + Drawn + ShotJudge.MaxDelay;
         _room.Step(now);
         double second = StartNextRound(now + RoundFlow.ResultDuration);
         _room.Fire(_b, 0, HeadAcross, second + Drawn, second + Drawn + 20);
-        double won = second + Drawn + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double won = second + Drawn + ShotJudge.MaxDelay;
         _room.Step(won);
         double lobbyAt = won + RoundFlow.WinResultDuration;
         _room.Step(lobbyAt);
@@ -1545,7 +1568,7 @@ public class RoomTests
 
         // Act
         // 새 판에서 a가 b의 몸을 맞힘
-        _room.Fire(_a, Math.PI, 0, newGameAt + Drawn + 100, newGameAt + Drawn + 120);
+        _room.Fire(_a, Math.PI, BodyAcross, newGameAt + Drawn + 100, newGameAt + Drawn + 120);
         var messages = _room.Step(newGameAt + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
@@ -1583,28 +1606,28 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_LastOpponentDown_ResultWinAfterMutualWindow()
+    public void Step_LastOpponentDown_ResultWinAfterMaxDelay()
     {
         // Arrange
         double duelAt = StartDuel();
         double hitAt = duelAt + Drawn + 100;
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
-        var hit = _room.Step(hitAt + ShotJudge.MaxDelay);
 
         // Act
-        var waiting = _room.Step(hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow - 1);
-        double now = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        var waiting = _room.Step(hitAt + ShotJudge.MaxDelay - 1);
+        double now = hitAt + ShotJudge.MaxDelay;
         var messages = _room.Step(now);
 
         // Assert
-        // b가 맞은 시각에서 D 안에 쏜 발사가 아직 올 수 있어 W + D가 지나야 승리를 정함.
+        // b가 맞은 시각과 같은 ms에 쏜 발사가 아직 올 수 있어 W가 지나야 판정하고, 그 틱에 바로 승리를 정함 (SHEEP-160).
         // 결과 바로 뒤에 준비 중으로 돌아가는 시각을 알림. 그 시각은 결과를 정한 시각에 승리 결과 시간을 더한 값 (기술 설계서 메시지 result).
         // 승리 결과는 이긴 사람 세레모니를 보여 주려고 재대결 결과보다 김 (SHEEP-136)
-        Assert.Equal(_b, Assert.Single(hit.OfType<EliminatedMessage>()).PlayerId);
-        Assert.Empty(hit.OfType<ResultMessage>());
+        Assert.Empty(waiting.OfType<EliminatedMessage>());
         Assert.Empty(waiting.OfType<ResultMessage>());
+        Assert.Equal(_b, Assert.Single(messages.OfType<EliminatedMessage>()).PlayerId);
+        var tail = messages.SkipWhile(m => m is not ResultMessage).ToList();
         Assert.Collection(
-            messages,
+            tail,
             m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Win, [_a], 0),
             m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.WinResultDuration),
             m => Assert.IsType<StateMessage>(m));
@@ -1617,10 +1640,10 @@ public class RoomTests
         double duelAt = StartDuel();
         double hitAt = duelAt + Drawn + 100;
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
-        var hit = StateAt(hitAt + ShotJudge.MaxDelay);
+        var hit = StateAt(hitAt + ShotJudge.MaxDelay - 1);
 
         // Act
-        var decided = StateAt(hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow);
+        var decided = StateAt(hitAt + ShotJudge.MaxDelay);
 
         // Assert
         // 승리를 정한 틱의 state부터 이긴 사람만 1 오름. 클라는 이 값 × $100을 현상금으로 적음 (시스템 기획서 방 화면 현상금)
@@ -1637,10 +1660,9 @@ public class RoomTests
         double shotAt = duelAt + Drawn + 100;
         _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
         _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
-        _room.Step(shotAt + ShotJudge.MaxDelay);
 
         // Act
-        var messages = _room.Step(shotAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow);
+        var messages = _room.Step(shotAt + ShotJudge.MaxDelay);
 
         // Assert
         // 함께 쓰러져 다음 라운드로 감. 판이 끝나지 않아 아무도 오르지 않음
@@ -1657,8 +1679,7 @@ public class RoomTests
         double duelAt = StartDuel();
         double hitAt = duelAt + Drawn + 100;
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
-        _room.Step(hitAt + ShotJudge.MaxDelay);
-        double decidedAt = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double decidedAt = hitAt + ShotJudge.MaxDelay;
         _room.Step(decidedAt);
         var lobby = StateAt(decidedAt + RoundFlow.WinResultDuration); // 준비 중으로 돌아감
 
@@ -1944,23 +1965,25 @@ public class RoomTests
     public void RemovePlayer_AllAliveLeave_LatestDownWins()
     {
         // Arrange
-        // 넷이 다 걸으면 a는 +x, b는 +y, c는 -x, d는 -y 쪽에 섬. a가 c를, 그다음 b가 d를 맞힘
+        // 넷이 다 걸으면 a는 +x, b는 +y, c는 -x, d는 -y 쪽에 섬. c가 옆의 d를, 그다음 a가 맞은편 c를 맞힘. b는 쏘지 않아 총알이 남음
         double duelAt = StartDuelWith(_a, _b, _c, _d);
-        _room.Fire(_a, Math.PI, HeadAcross, duelAt + Drawn, duelAt + Drawn + 20);
-        double second = duelAt + Drawn + 2 * ShotJudge.MutualWindow;
-        _room.Fire(_b, 3 * Math.PI / 2, HeadAcross, second, second + 20);
-        _room.Step(second + ShotJudge.MaxDelay); // c와 d가 쓰러짐
+        double first = duelAt + Drawn;
+        _room.Fire(_c, SquareCToD, HeadInSquare, first, first + 20);
+        _room.Step(first + ShotJudge.MaxDelay); // d가 쓰러짐
+        double second = first + 400;
+        _room.Fire(_a, Math.PI, HeadAcross, second, second + 20);
+        _room.Step(second + ShotJudge.MaxDelay); // c가 쓰러짐. b에게 총알이 남아 결투가 이어짐
 
         // Act
         // 살아 있던 a와 b가 같은 틱 안에 나감
         _room.RemovePlayer(_a);
         _room.RemovePlayer(_b);
-        double now = second + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double now = second + ShotJudge.MaxDelay + 50;
         var messages = _room.Step(now);
 
         // Assert
-        // c는 d보다 D 넘게 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 d 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 d가 이김
-        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_d], 0);
+        // d는 c보다 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 c 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 c가 이김
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_c], 0);
         AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.WinResultDuration);
     }
 
@@ -2012,7 +2035,7 @@ public class RoomTests
         double duelAt = StartDuel();
         double deadline = duelAt + RoundFlow.DuelLimit;
         _room.Step(deadline);
-        var fired = _room.Fire(_a, Math.PI, 0, deadline - 10, deadline + 50);
+        var fired = _room.Fire(_a, Math.PI, BodyAcross, deadline - 10, deadline + 50);
 
         // Act
         var messages = _room.Step(deadline + ShotJudge.MaxDelay);
@@ -2055,7 +2078,7 @@ public class RoomTests
         var messages = _room.Fire(_a, Math.PI, HeadAcross, deadline, deadline + ShotJudge.MaxDelay);
 
         // Assert
-        // 자살에 한 발을 써서 남은 총알이 없음. 맞은 시각에서 D 안의 발사처럼 받아 주면 안 됨
+        // 자살에 한 발을 써서 남은 총알이 없음. 맞은 시각과 같은 ms의 발사처럼 받아 주면 안 됨
         Assert.Empty(messages);
     }
 
@@ -2067,9 +2090,9 @@ public class RoomTests
         double deadline = duelAt + RoundFlow.DuelLimit;
 
         // Act
-        var timedOut = _room.Step(deadline + ShotJudge.MaxDelay);
-        double now = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double now = deadline + ShotJudge.MaxDelay;
         var decided = _room.Step(now);
+        var timedOut = decided;
         var state = StateAt(now + RoundFlow.ResultDuration);
 
         // Assert
@@ -2081,24 +2104,22 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_MutualHitNearDeadline_CoFallenWithTimedOut()
+    public void Step_MutualHitAtDeadline_CoFallenWithTimedOut()
     {
         // Arrange
-        // 제한 시각 직전에 a와 b가 D 안에 서로 머리를 맞히고, c는 쏘지 않음
+        // 제한 시각에 딱 맞춰 a와 b가 같은 ms에 서로 머리를 맞히고, c는 쏘지 않음
         double duelAt = StartDuelWith(_a, _b, _c);
         double deadline = duelAt + RoundFlow.DuelLimit;
-        _room.Fire(_a, AToB, HeadInTriangle, deadline - 50, deadline - 30);
-        _room.Fire(_b, BToA, HeadInTriangle, deadline - 40, deadline - 20);
-        _room.Step(deadline - 40 + ShotJudge.MaxDelay); // a와 b가 쓰러짐
+        _room.Fire(_a, AToB, HeadInTriangle, deadline, deadline + 20);
+        _room.Fire(_b, BToA, HeadInTriangle, deadline, deadline + 30);
 
         // Act
-        var timedOut = _room.Step(deadline + ShotJudge.MaxDelay);
-        double now = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double now = deadline + ShotJudge.MaxDelay;
         var decided = _room.Step(now);
 
         // Assert
-        // c는 제한 시각에 쓰러져 D 안에 쓰러진 a, b와 함께 쓰러진 것임. 셋이 다음 라운드로 감 (컨셉 기획서 규칙 함께 쓰러짐)
-        Assert.Equal(_c, Assert.Single(timedOut.OfType<EliminatedMessage>()).PlayerId);
+        // c는 제한 시각에 쓰러져 같은 시각에 맞은 a, b와 함께 쓰러진 것임. 셋이 다음 라운드로 감 (컨셉 기획서 규칙 함께 쓰러짐)
+        Assert.Equal(new[] { _a, _b, _c }.Order(), decided.OfType<EliminatedMessage>().Select(m => m.PlayerId).Order());
         AssertResult(Assert.Single(decided.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b, _c], 1);
     }
 
@@ -2205,8 +2226,8 @@ public class RoomTests
         double downAt = duelAt + Drawn + 100 + ShotJudge.MaxDelay;
         _room.Step(downAt);
         _room.Spectate(_a, _c);
-        _room.Fire(_c, SquareCToD, 0, downAt + 100, downAt + 120);
-        _room.Fire(_d, SquareDToC, 0, downAt + 150, downAt + 170);
+        _room.Fire(_c, SquareCToD, BodyInSquare, downAt + 100, downAt + 120);
+        _room.Fire(_d, SquareDToC, BodyInSquare, downAt + 150, downAt + 170);
 
         // Act
         var messages = _room.Step(downAt + 150 + ShotJudge.MaxDelay);
@@ -2228,7 +2249,7 @@ public class RoomTests
 
         // Act
         var stopped = _room.Spectate(_a, null);
-        _room.Fire(_c, CToB, 0, now + 100, now + 120);
+        _room.Fire(_c, CToB, BodyInTriangle, now + 100, now + 120);
         var messages = _room.Step(now + 100 + ShotJudge.MaxDelay);
 
         // Assert
@@ -2244,7 +2265,7 @@ public class RoomTests
         // Arrange
         double now = ADownByB();
         _room.Spectate(_a, _c);
-        _room.Fire(_c, CToB, 0, now + 100, now + 120);
+        _room.Fire(_c, CToB, BodyInTriangle, now + 100, now + 120);
 
         // Act
         _room.RemovePlayer(_c);
@@ -2275,33 +2296,6 @@ public class RoomTests
     }
 
     [Fact]
-    public void Spectate_RematchStands_Unwatched()
-    {
-        // Arrange
-        // b가 a의 머리를 먼저 맞혀 a가 쓰러지고, 아직 서 있는 b를 a가 봄. 그다음 a가 D 안에 쏜 발사가 b를 맞혀 함께 쓰러지고 다음 라운드에 둘 다 다시 섬
-        double duelAt = StartDuel();
-        double shotAt = duelAt + Drawn + 100;
-        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
-        _room.Fire(_a, Math.PI, HeadAcross, shotAt + 50, shotAt + 70);
-        _room.Step(shotAt + ShotJudge.MaxDelay); // a만 쓰러짐
-        var spectating = _room.Spectate(_a, _b);
-        _room.Step(shotAt + 50 + ShotJudge.MaxDelay); // b도 쓰러짐
-        double decided = shotAt + 50 + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
-        _room.Step(decided);
-        double next = StartNextRound(decided + RoundFlow.ResultDuration);
-
-        // Act
-        _room.Fire(_b, Math.PI, 0, next + Drawn + 100, next + Drawn + 120); // b는 -x 쪽 바깥으로 쏨
-        var messages = _room.Step(next + Drawn + 100 + ShotJudge.MaxDelay);
-
-        // Assert
-        // 다시 서면 관전이 풀려 서 있는 동안 b의 사격 결과를 받지 않음
-        Assert.NotNull(spectating);
-        Assert.Single(TickLoop.MessagesFor(_b, messages).OfType<ShotResultMessage>());
-        Assert.Empty(TickLoop.MessagesFor(_a, messages).OfType<ShotResultMessage>());
-    }
-
-    [Fact]
     public void Step_HeadShot_DownedByToTargetOnly()
     {
         // Arrange
@@ -2329,8 +2323,8 @@ public class RoomTests
         // Arrange
         // a가 먼저 c의 몸을, b가 나중에 c의 몸을 맞힘. 두 번째 반샷에 c가 쓰러짐
         double duelAt = StartDuelWith(_a, _b, _c);
-        _room.Fire(_a, AToC, 0, duelAt + Drawn + 100, duelAt + Drawn + 120);
-        _room.Fire(_b, BToC, 0, duelAt + Drawn + 150, duelAt + Drawn + 170);
+        _room.Fire(_a, AToC, BodyInTriangle, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        _room.Fire(_b, BToC, BodyInTriangle, duelAt + Drawn + 150, duelAt + Drawn + 170);
 
         // Act
         var messages = _room.Step(duelAt + Drawn + 150 + ShotJudge.MaxDelay);
@@ -2364,6 +2358,9 @@ public class RoomTests
     // distance만큼 떨어진 사람의 머리 가운데를 겨누는 위아래 각도. 머리 옆면(앞으로 distance - HeadRadius)에서 눈높이보다 머리 가운데만큼 위
     private static double HeadPitch(double distance) =>
         Math.Atan(((HitScan.BodyTop + HitScan.HeadTop) / 2 - HitScan.EyeHeight) / (distance - HitScan.HeadRadius));
+
+    private static double BodyPitch(double distance) =>
+        Math.Atan((HitScan.BodyTop / 2 - HitScan.EyeHeight) / (distance - HitScan.BodyRadius));
 
     private static void AssertStandsAt((double X, double Y, double Angle) spot, PlayerState player)
     {
@@ -2524,7 +2521,7 @@ public class RoomTests
     {
         double hitAt = duelAt + Drawn + 100;
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
-        double now = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
+        double now = hitAt + ShotJudge.MaxDelay;
         _room.Step(now);
         return now + RoundFlow.WinResultDuration;
     }
@@ -2536,8 +2533,8 @@ public class RoomTests
         double duelAt = StartDuelWith(_a, _b, _c);
         _room.Fire(_a, AToC, HeadInTriangle, duelAt + Drawn, duelAt + Drawn + 20); // c의 머리를 맞힘
         _room.Fire(_b, 2 * Math.PI / 3, 0, duelAt + Drawn, duelAt + Drawn + 20); // 바깥으로 쏨
-        double now = duelAt + Drawn + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
-        _room.Step(now); // c가 맞고 W + D가 지나 다음 라운드가 정해짐
+        double now = duelAt + Drawn + ShotJudge.MaxDelay;
+        _room.Step(now); // c가 맞고 W가 지나 다음 라운드가 정해짐
         return now + RoundFlow.ResultDuration;
     }
 
@@ -2546,7 +2543,7 @@ public class RoomTests
     private double ADownByB()
     {
         double duelAt = StartDuelWith(_a, _b, _c);
-        _room.Fire(_a, AToC, 0, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        _room.Fire(_a, AToC, BodyInTriangle, duelAt + Drawn + 100, duelAt + Drawn + 120);
         _room.Fire(_b, BToA, HeadInTriangle, duelAt + Drawn + 150, duelAt + Drawn + 170);
         double now = duelAt + Drawn + 150 + ShotJudge.MaxDelay;
         _room.Step(now);

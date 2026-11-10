@@ -9,10 +9,6 @@ public static class ShotJudge
     // ponytail: 임시 값. 기술 설계서 미정 사항의 W를 플레이해 보며 정하면 그 값으로 바꿈
     public const double MaxDelay = 200;
 
-    // ms. D. 맞은 뒤 이 시간 안에 쏜 발사는 유효해, 서로 맞히면 함께 쓰러짐 (시스템 기획서 판 흐름 시간).
-    // ponytail: 임시 값. 기술 설계서 미정 사항의 D를 플레이해 보며 정하면 그 값으로 바꿈
-    public const double MutualWindow = 100;
-
     // 몸을 이만큼 맞으면 쓰러짐. 머리는 한 번에 쓰러짐 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
     public const int WoundsToDown = 2;
 
@@ -20,7 +16,7 @@ public static class ShotJudge
     public static double ClampAt(double at, double arrivedAt) => Math.Clamp(at, arrivedAt - MaxDelay, arrivedAt);
 
     // shots를 쏜 시각 순서로 판정해 발사마다 결과 하나를 그 순서로 돌려줌. 빗나간 발사도 들어감. 맞은 시각은 맞힌 발사의 쏜 시각(ShotOutcome.At)임.
-    // players는 방 안 사람의 자리, 이미 맞은 시각(서 있으면 null), 반샷 수. 목록에 없는 사람(나간 사람)의 발사와 맞고 D가 지난 뒤의 발사는 버려 결과에도 없음
+    // players는 방 안 사람의 자리, 이미 맞은 시각(서 있으면 null), 반샷 수. 목록에 없는 사람(나간 사람)의 발사와 맞은 뒤의 발사는 버려 결과에도 없음
     public static List<ShotOutcome> Judge(IEnumerable<Shot> shots, IReadOnlyList<(Guid Id, double X, double Y, double? DownAt, int Wounds)> players, ArenaMap map)
     {
         var downAt = new Dictionary<Guid, double?>();
@@ -38,8 +34,9 @@ public static class ShotJudge
         // 쏜 시각이 같으면 받은 순서대로. OrderBy는 같은 값끼리의 순서를 지킴
         foreach (var shot in shots.OrderBy(s => s.At))
         {
-            // 맞고 D가 지난 뒤에 쏜 발사는 무효. 받을 때는 아직 맞은 줄 몰랐을 수 있어 여기서 다시 봄
-            if (!downAt.TryGetValue(shot.ShooterId, out var shooterDownAt) || (shooterDownAt != null && shot.At > shooterDownAt.Value + MutualWindow))
+            // 맞은 뒤에 쏜 발사는 근소한 차이여도 무효라 먼저 쏜 사람이 이김. 쏜 시각이 ms까지 같으면 둘 다 유효해 함께 쓰러짐
+            // (사용자 결정 2026-11-11, SHEEP-160). 받을 때는 아직 맞은 줄 몰랐을 수 있어 여기서 다시 봄
+            if (!downAt.TryGetValue(shot.ShooterId, out var shooterDownAt) || (shooterDownAt != null && shot.At > shooterDownAt.Value))
             {
                 continue;
             }

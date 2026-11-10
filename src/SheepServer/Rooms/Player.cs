@@ -50,7 +50,7 @@ public class Player
     public int Ammo { get; set; } = Revolver.Capacity;
 
     // 맞은 시각(ms, 서버 시계). 맞힌 발사의 쏜 시각임. 서 있으면 null.
-    // 이 시각에서 D 안에 쏜 발사는 받고, 아무도 안 남았을 때 함께 쓰러진 사람들을 찾는 데 씀 (기술 설계서 명중 판정 함께 쓰러짐)
+    // 이 시각과 ms까지 같은 때 쏜 발사까지 받고, 아무도 안 남았을 때 함께 쓰러진 사람들을 찾는 데 씀 (기술 설계서 명중 판정 함께 쓰러짐)
     public double? DownAt { get; set; }
 
     // 마지막으로 받아들인 발사의 쏜 시각(ms, 서버 시계). 아직 안 쐈으면 null

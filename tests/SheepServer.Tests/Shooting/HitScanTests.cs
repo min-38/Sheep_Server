@@ -4,9 +4,13 @@ using SheepServer.Arena;
 using SheepServer.Shooting;
 
 // 기술 설계서 명중 판정: 쏜 사람 위치에서 그 각도로 광선을 쏴, 벽보다 먼저 닿는 첫 번째 사람이 맞음.
-// 사람은 몸과 머리 두 원기둥. 각도는 turn과 같음 (0은 +x, π/2는 +y), pitch는 위아래 각도(위가 +). 광선은 눈높이에서 출발함
+// 사람은 몸과 머리 두 원기둥. 각도는 turn과 같음 (0은 +x, π/2는 +y), pitch는 위아래 각도(위가 +). 광선은 눈높이에서 출발함.
+// 눈높이는 캐릭터의 눈 자리라 머리 높이임. 수평으로 쏘면 머리에 맞음 (SHEEP-158)
 public class HitScanTests
 {
+    // 칸. 몸 원기둥의 가운데 높이
+    private const double BodyMid = HitScan.BodyTop / 2;
+
     private readonly Guid _b = Guid.NewGuid();
     private readonly Guid _c = Guid.NewGuid();
 
@@ -24,13 +28,13 @@ public class HitScanTests
     public void FirstHit_TargetStraightAhead_HitPointOnNearSurface()
     {
         // Act
-        var hit = HitScan.FirstHit(2.5, 5.5, 0, 0, [(_b, 6.5, 5.5)], Map());
+        var hit = HitScan.FirstHit(2.5, 5.5, 0, Aim(BodyMid, 4 - HitScan.BodyRadius), [(_b, 6.5, 5.5)], Map());
 
         // Assert
         // 맞은 자리는 광선이 몸 원기둥 옆면에 처음 닿는 곳. 피와 상처를 그 자리에 그림 (SHEEP-126)
         Assert.Equal(6.5 - HitScan.BodyRadius, hit!.X, 9);
         Assert.Equal(5.5, hit.Y, 9);
-        Assert.Equal(HitScan.EyeHeight, hit.Height, 9);
+        Assert.Equal(BodyMid, hit.Height, 9);
     }
 
     [Fact]
@@ -65,7 +69,7 @@ public class HitScanTests
         Guid? expected = hit ? _b : null;
 
         // Act
-        var result = HitScan.FirstHit(2.5, 5.5, 0, 0, [(_b, 6.5, 5.5 + radii * HitScan.BodyRadius)], Map());
+        var result = HitScan.FirstHit(2.5, 5.5, 0, Aim(BodyMid, 4 - HitScan.BodyRadius), [(_b, 6.5, 5.5 + radii * HitScan.BodyRadius)], Map());
 
         // Assert
         Assert.Equal(expected, result?.Id);
@@ -116,26 +120,26 @@ public class HitScanTests
 
     // 아래 테스트는 (5, 5)에서 +x(0)로 쏘고, 맞을 사람은 3칸 앞 (8, 5)에 섬
     [Fact]
-    public void FirstHit_Level_BodyAtEyeHeight()
+    public void FirstHit_Level_HeadAtEyeHeight()
     {
         // Act
         var hit = HitScan.FirstHit(5, 5, 0, 0, [(_b, 8, 5)], Map());
 
         // Assert
-        // 수평으로 쏘면 눈높이에서 몸에 맞음
+        // 수평으로 쏘면 눈높이에서 머리에 맞음. 마주 선 사람과 눈높이가 같음 (SHEEP-158)
         Assert.NotNull(hit);
         Assert.Equal(_b, hit.Id);
-        Assert.Equal(HitZone.Body, hit.Zone);
+        Assert.Equal(HitZone.Head, hit.Zone);
         Assert.Equal(HitScan.EyeHeight, hit.Height, 1e-9);
         Assert.Equal(0, hit.Offset, 1e-9);
     }
 
     [Fact]
-    public void FirstHit_AimUpAtHead_Head()
+    public void FirstHit_AimAtHead_Head()
     {
         // Arrange
-        // 머리 옆면(앞으로 3 - HeadRadius)에서 눈높이보다 0.34 위. 몸 꼭대기(0.78)와 머리 꼭대기(0.9) 사이임
-        double pitch = Math.Atan(0.34 / (3 - HitScan.HeadRadius));
+        // 머리 옆면(앞으로 3 - HeadRadius)에서 높이 0.86. 몸 꼭대기(0.78)와 머리 꼭대기(0.9) 사이임
+        double pitch = Aim(0.86, 3 - HitScan.HeadRadius);
 
         // Act
         var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5)], Map());
@@ -143,7 +147,7 @@ public class HitScanTests
         // Assert
         Assert.NotNull(hit);
         Assert.Equal(HitZone.Head, hit.Zone);
-        Assert.Equal(HitScan.EyeHeight + 0.34, hit.Height, 1e-9);
+        Assert.Equal(0.86, hit.Height, 1e-9);
     }
 
     [Fact]
@@ -151,7 +155,7 @@ public class HitScanTests
     {
         // Arrange
         // 몸 옆면(앞으로 3 - BodyRadius)에서 높이 0.75. 7.5등신 틀에서는 어깨 아래라 몸임 (시스템 기획서 리볼버, SHEEP-89)
-        double pitch = Math.Atan(0.25 / (3 - HitScan.BodyRadius));
+        double pitch = Aim(0.75, 3 - HitScan.BodyRadius);
 
         // Act
         var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5)], Map());
@@ -163,11 +167,11 @@ public class HitScanTests
     }
 
     [Fact]
-    public void FirstHit_BesideBodyAtEyeHeight_Miss()
+    public void FirstHit_BesideBody_Miss()
     {
         // Act
-        // 광선에서 옆으로 0.2. 7.5등신 몸 반지름(0.15) 밖이라 눈높이로 쏴도 옆을 지나감 (SHEEP-89)
-        var hit = HitScan.FirstHit(5, 5, 0, 0, [(_b, 8, 5.2)], Map());
+        // 광선에서 옆으로 0.2. 7.5등신 몸 반지름(0.15) 밖이라 몸 높이로 쏴도 옆을 지나감 (SHEEP-89)
+        var hit = HitScan.FirstHit(5, 5, 0, Aim(BodyMid, 3 - HitScan.BodyRadius), [(_b, 8, 5.2)], Map());
 
         // Assert
         Assert.Null(hit);
@@ -199,7 +203,7 @@ public class HitScanTests
     {
         // Arrange
         // 맞을 사람이 광선에서 옆으로 0.1. 몸 반지름(0.15) 안이지만 머리 반지름(0.05) 밖임. 머리 높이로 쏘면 머리 옆을 지나감
-        double pitch = Math.Atan(0.34 / (3 - HitScan.HeadRadius));
+        double pitch = Aim(0.86, 3 - HitScan.HeadRadius);
 
         // Act
         var hit = HitScan.FirstHit(5, 5, 0, pitch, [(_b, 8, 5.1)], Map());
@@ -213,12 +217,15 @@ public class HitScanTests
     {
         // Act
         // +x를 보면 +y가 오른쪽임 (render.ts의 plane과 같음). 맞을 사람의 중심이 광선 오른쪽에 있어 맞은 자리는 중심의 왼쪽
-        var hit = HitScan.FirstHit(5, 5, 0, 0, [(_b, 8, 5.1)], Map());
+        var hit = HitScan.FirstHit(5, 5, 0, Aim(BodyMid, 3 - HitScan.BodyRadius), [(_b, 8, 5.1)], Map());
 
         // Assert
         Assert.NotNull(hit);
         Assert.Equal(-0.1, hit.Offset, 1e-9);
     }
+
+    // ahead칸 앞에서 높이 height(칸)를 지나는 위아래 각도
+    private static double Aim(double height, double ahead) => Math.Atan((height - HitScan.EyeHeight) / ahead);
 
     // 11×11칸, 둘레만 벽인 맵. walls의 (x, y) 칸도 벽으로 만듦
     private static ArenaMap Map(params (int X, int Y)[] walls)

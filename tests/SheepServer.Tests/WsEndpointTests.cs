@@ -816,7 +816,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         await DrawThenWait(host, duelAt);
         await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + Revolver.DrawDuration + 10 }));
 
-        // 둘 다 eliminated를 받고, W + D가 지난 틱에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
+        // 둘 다 eliminated를 받고, W가 지난 틱에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
         double lobbyAt = 0;
         foreach (var ws in new[] { host, guest })
         {
