@@ -103,6 +103,22 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
             || (c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out character) && Character.IsValid(character));
     }
 
+    // 사람 색 번호. 없으면 null이고 방이 들어온 순서대로 줌. 있으면 0 이상 색 수 미만 정수여야 함. 틀리면 false (기술 설계서 메시지 createRoom color)
+    static bool ReadColor(JsonElement root, out int? color)
+    {
+        color = null;
+        if (!root.TryGetProperty("color", out var c))
+        {
+            return true;
+        }
+        if (c.ValueKind != JsonValueKind.Number || !c.TryGetInt32(out int value) || !PersonColor.IsValid(value))
+        {
+            return false;
+        }
+        color = value;
+        return true;
+    }
+
     // 방에 들어간 답(roomCreated, joined). 칠판에 적을 방 이름과 비공개 여부, 바 좌석 수가 되는 인원 제한을 함께 줌 (기술 설계서 메시지 roomCreated)
     object Entered(string type, string code)
     {
@@ -141,6 +157,10 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "character" }];
                     }
+                    if (!ReadColor(root, out int? hostColor))
+                    {
+                        return [new { type = "error", reason = "color" }];
+                    }
                     // 방 이름은 없으면 "닉네임's room", 있으면 규칙에 맞아야 함 (시스템 기획서 방 화면 방 만들기)
                     string? roomName = null;
                     if (root.TryGetProperty("name", out var nameProp))
@@ -165,7 +185,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName, hostCharacter);
+                    roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName, hostCharacter, hostColor);
                     return [Entered("roomCreated", roomId), mapMessage];
 
                 case "joinRoom":
@@ -177,13 +197,17 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "character" }];
                     }
+                    if (!ReadColor(root, out int? guestColor))
+                    {
+                        return [new { type = "error", reason = "color" }];
+                    }
                     string? code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
                         ? c.GetString()!.ToUpperInvariant() : null;
                     if (code != null && code == roomId)
                     {
                         return [Entered("joined", code), mapMessage];
                     }
-                    switch (registry.JoinRoom(code, playerId, Enqueue, guestName, guestCharacter))
+                    switch (registry.JoinRoom(code, playerId, Enqueue, guestName, guestCharacter, guestColor))
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
@@ -223,6 +247,15 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     if (root.TryGetProperty("ready", out var r) && (r.ValueKind == JsonValueKind.True || r.ValueKind == JsonValueKind.False))
                     {
                         registry.GetRoomById(roomId)?.SetReady(playerId, r.GetBoolean());
+                    }
+                    return [];
+
+                case "dress":
+                    // 둘 다 정수인지 먼저 봄. 아니면 GetInt32가 던져 연결이 끊김. 범위, 겹치는 색, 판 도중은 Room.Dress가 봄. 답은 없음
+                    if (root.TryGetProperty("character", out var dressCharacter) && dressCharacter.ValueKind == JsonValueKind.Number && dressCharacter.TryGetInt32(out int newCharacter)
+                        && root.TryGetProperty("color", out var dressColor) && dressColor.ValueKind == JsonValueKind.Number && dressColor.TryGetInt32(out int newColor))
+                    {
+                        registry.GetRoomById(roomId)?.Dress(playerId, newCharacter, newColor);
                     }
                     return [];
 
