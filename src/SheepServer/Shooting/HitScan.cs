@@ -64,7 +64,7 @@ public static class HitScan
                 // 목록 순서가 아니라 가장 가까운 것이 맞음. (−dy, dx)가 쏜 사람의 오른쪽이고, 맞은 자리는 광선 위라 중심의 반대쪽으로 떨어져 있음
                 if (distance < nearest)
                 {
-                    hit = new ScanHit(target.Id, part.Zone, height, -(wx * -dy + wy * dx));
+                    hit = new ScanHit(target.Id, part.Zone, height, -(wx * -dy + wy * dx), x + dx * distance, y + dy * distance);
                     nearest = distance;
                 }
             }

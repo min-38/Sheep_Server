@@ -56,15 +56,14 @@ public class Player
     // 마지막으로 받아들인 발사의 쏜 시각(ms, 서버 시계). 아직 안 쐈으면 null
     public double? LastShotAt { get; set; }
 
+    // 이번 라운드에 D 키로 총을 뽑기 시작한 시각(ms, 서버 시계). 아직 안 뽑았으면 null. 다른 사람이 뽑는 모습을 그리게 state에 실음 (SHEEP-123)
+    public double? DrawnAt { get; set; }
+
     // 맞은 반샷 수. 몸을 맞으면 늘고 ShotJudge.WoundsToDown에 닿으면 쓰러짐. 판이 끝날 때까지 남음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
     public int Wounds { get; set; }
 
     // 이번 라운드 걷기가 시작할 때의 반샷 수. 함께 쓰러져 다음 라운드로 가는 사람은 이 값으로 되돌림 (컨셉 기획서 규칙 함께 쓰러짐)
     public int RoundStartWounds { get; set; }
-
-    // 이번 라운드에 걷다 멈춘 거리(칸). 멈추지 않았으면 null이고 최대 걸음까지 걸음 (컨셉 기획서 규칙 걷기와 멈추기).
-    // 시작 배치에 다시 설 때 지움
-    public double? StopDistance { get; set; }
 
     // 이 방에서 이긴 횟수. 클라가 × $100을 현상금으로 적음. 방을 나가면 Player와 함께 사라짐 (시스템 기획서 방 화면 현상금)
     public int Wins { get; set; }

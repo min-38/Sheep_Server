@@ -21,6 +21,19 @@ public class HitScanTests
     }
 
     [Fact]
+    public void FirstHit_TargetStraightAhead_HitPointOnNearSurface()
+    {
+        // Act
+        var hit = HitScan.FirstHit(2.5, 5.5, 0, 0, [(_b, 6.5, 5.5)], Map());
+
+        // Assert
+        // 맞은 자리는 광선이 몸 원기둥 옆면에 처음 닿는 곳. 피와 상처를 그 자리에 그림 (SHEEP-126)
+        Assert.Equal(6.5 - HitScan.BodyRadius, hit!.X, 9);
+        Assert.Equal(5.5, hit.Y, 9);
+        Assert.Equal(HitScan.EyeHeight, hit.Height, 9);
+    }
+
+    [Fact]
     public void FirstHit_TargetBehind_Miss()
     {
         // Act

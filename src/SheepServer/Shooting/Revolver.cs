@@ -8,4 +8,8 @@ public static class Revolver
 
     // ms. 같은 사람이 이보다 빨리 쏘면 버림. ponytail: 임시 값. 플레이해 보며 정함
     public const double FireInterval = 250;
+
+    // ms. D 키로 총을 뽑기 시작해 다 들기까지. 그 전에 쏜 발사는 버림 (사용자 결정 2026-11-10, SHEEP-123).
+    // 클라 gun.ts DRAW_MS와 같아야 함
+    public const double DrawDuration = 350;
 }
