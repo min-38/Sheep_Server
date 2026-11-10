@@ -774,6 +774,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             var shot = await ReceiveWhere(ws, m => IsType(m, "shot"));
             Assert.Equal(hostId, shot.GetProperty("playerId").GetString());
             Assert.Equal(Math.PI, shot.GetProperty("angle").GetDouble(), 1e-9);
+            Assert.Equal(HeadAcross, shot.GetProperty("pitch").GetDouble(), 1e-9);
             var next = await Receive(ws);
             if (ws == host)
             {

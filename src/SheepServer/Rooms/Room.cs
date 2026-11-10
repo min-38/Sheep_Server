@@ -316,7 +316,7 @@ public class Room
             shooter.Ammo--;
             shooter.LastShotAt = at;
             _pending.Add(new Shot(playerId, angle, pitch, at));
-            messages.Add(new ShotMessage(playerId, angle));
+            messages.Add(new ShotMessage(playerId, angle, pitch));
             return messages;
         }
     }
