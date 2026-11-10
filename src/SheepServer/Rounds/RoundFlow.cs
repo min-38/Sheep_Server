@@ -9,8 +9,9 @@ public static class RoundFlow
     // ponytail: 임시 값. 기술 설계서 미정 사항의 "미리 알리는 시간"을 플레이해 보며 정하면 그 값으로 바꿈
     public const double Lead = 500;
 
-    // ms. 3, 2, 1을 이 간격마다 보여 줌 (시스템 기획서 판 흐름 시간). ponytail: 임시 값
-    public const double CountdownInterval = 1000;
+    // ms. 카운트다운 길이. 그동안 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
+    // 장전 모습과 소리는 클라가 이 시각에서 잼
+    public const double CountdownDuration = 4000;
 
     // ms. 걷기 시각에 중심을 보던 사람이 제자리에서 바깥으로 천천히 뒤도는 시간. 그 뒤에 걸음 (사용자 결정 2026-11-09, SHEEP-120).
     // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
@@ -68,7 +69,7 @@ public static class RoundFlow
         // 다음 시각은 늦게 온 틱(now)이 아니라 정해 둔 시각(NextAt)에 더함. 그래야 미리 알린 시각과 어긋나지 않음
         return current.Next switch
         {
-            RoundPhase.Countdown => new Round(RoundPhase.Countdown, RoundPhase.Walk, current.NextAt + 3 * CountdownInterval),
+            RoundPhase.Countdown => new Round(RoundPhase.Countdown, RoundPhase.Walk, current.NextAt + CountdownDuration),
             // 결투 시각은 돌고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
             RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + WalkDuration + DuelWait(seed)),
             // 결투 다음은 결과가 정해져야 알 수 있어 시각은 쓰지 않음

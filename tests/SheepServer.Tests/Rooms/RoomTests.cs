@@ -569,7 +569,7 @@ public class RoomTests
         AddReady(_a, _b);
         _room.Step(1000);
         double countdownAt = 1000 + RoundFlow.Lead;
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
 
         // Act
         var atCountdown = _room.Step(countdownAt);
@@ -657,7 +657,7 @@ public class RoomTests
         var state = messages.OfType<StateMessage>().Single();
 
         // Assert
-        AssertAnnounces(messages, RoundPhase.Walk, countdownAt + 3 * RoundFlow.CountdownInterval); // 남은 둘로 판이 이어짐
+        AssertAnnounces(messages, RoundPhase.Walk, countdownAt + RoundFlow.CountdownDuration); // 남은 둘로 판이 이어짐
         Assert.Equal(2, state.Players.Count);
         Assert.DoesNotContain(state.Players, p => p.Id == _c);
         // 남은 사람을 다시 세우면 판 도중에 자리가 바뀜
@@ -1748,7 +1748,7 @@ public class RoomTests
         // Arrange
         double countdownAt = RematchAAndBWithCDown();
         var downBefore = Find(StateAt(countdownAt), _c);
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
         _room.Step(walkAt);
 
         // Act
@@ -1770,7 +1770,7 @@ public class RoomTests
         // Arrange
         double countdownAt = RematchAAndBWithCDown();
         _room.Step(countdownAt);
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
         var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
         _room.Step(duelAt);
 
@@ -2264,7 +2264,7 @@ public class RoomTests
         room.Step(from); // 카운트다운이 정해짐
         double countdownAt = from + RoundFlow.Lead;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
-        return countdownAt + 3 * RoundFlow.CountdownInterval;
+        return countdownAt + RoundFlow.CountdownDuration;
     }
 
     // 걷기 시각부터 50ms마다 틱을 돌려 결투 알림을 찾음. 알린 틱의 시각과 알린 결투 시각을 돌려줌
@@ -2354,7 +2354,7 @@ public class RoomTests
     private double StartNextRound(double countdownAt)
     {
         _room.Step(countdownAt);
-        var (_, duelAt) = StepUntilDuelAnnounced(_room, countdownAt + 3 * RoundFlow.CountdownInterval);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, countdownAt + RoundFlow.CountdownDuration);
         _room.Step(duelAt);
         return duelAt;
     }
