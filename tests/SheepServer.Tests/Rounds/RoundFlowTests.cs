@@ -45,6 +45,14 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void DuelLimit_FiveSeconds()
+    {
+        // Assert
+        // 결투 시각부터 5초 안에 쏘지 않으면 시간 초과로 쓰러짐 (시스템 기획서 판 흐름 시간, SHEEP-127)
+        Assert.Equal(5000, RoundFlow.DuelLimit);
+    }
+
+    [Fact]
     public void Advance_BeforeScheduledTime_Unchanged()
     {
         // Arrange
