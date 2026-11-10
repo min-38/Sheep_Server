@@ -721,6 +721,23 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
+    public async Task Draw_NotANumber_IgnoredAndConnectionKeepsWorking()
+    {
+        using var ws = await Connect();
+        await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
+
+        // 숫자가 아닌 시각과 빠진 시각은 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음 (SHEEP-123)
+        await Send(ws, """{"type":"draw","at":"100"}""");
+        await Send(ws, """{"type":"draw"}""");
+        await Send(ws, """{"type":"draw","at":100}""");
+        await Send(ws, """{"type":"clockSync","t0":7}""");
+
+        // 방을 만든 뒤에 오는 map은 건너뜀
+        var reply = await ReceiveWhere(ws, m => IsType(m, "serverTime"));
+        Assert.Equal(7, reply.GetProperty("t0").GetDouble());
+    }
+
+    [Fact]
     public async Task Fire_NotANumber_IgnoredAndConnectionKeepsWorking()
     {
         using var ws = await Connect();
@@ -765,7 +782,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
 
         // host는 먼저 들어와 0번 자리(중심의 +x 쪽), guest는 1번 자리(-x 쪽)에서 바깥을 봄. host가 π를 보고 머리 높이로 쏘면 guest가 쓰러짐
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
+        await DrawThenWait(host, duelAt);
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + Revolver.DrawDuration + 10 }));
 
         // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated).
         // 그 사이에 쏜 사람만 shotResult를 받음. 맞은 사람은 누가 쐈는지 받지 않음 (맞은 자리는 eliminated에 실림, SHEEP-126)
@@ -795,7 +813,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
         var (hostId, _, duelAt) = await PlayUntilDuel(host, guest);
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
+        await DrawThenWait(host, duelAt);
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + Revolver.DrawDuration + 10 }));
 
         // 둘 다 eliminated를 받고, W + D가 지난 틱에 result를, 그 바로 뒤에 준비 중으로 돌아가는 phase를 받음 (기술 설계서 메시지 result)
         double lobbyAt = 0;
@@ -838,7 +857,8 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         using var host = await Connect();
         using var guest = await Connect();
         var (hostId, guestId, duelAt) = await PlayUntilDuel(host, guest);
-        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
+        await DrawThenWait(host, duelAt);
+        await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + Revolver.DrawDuration + 10 }));
         await ReceiveWhere(guest, m => IsType(m, "eliminated"));
 
         // 쓰러진 guest는 host를 볼 수 있음. 답에 host의 지금 반샷 수와 남은 총알이 옴 (기술 설계서 메시지 spectating)
@@ -899,6 +919,13 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     static Task<JsonElement> Receive(WebSocket ws) => ReceiveWhere(ws, m => !IsState(m));
 
     // 조건에 맞는 메시지가 올 때까지 받고 나머지는 버림
+    // 결투 시각에 D 키로 총을 뽑고 다 들 때까지 기다림. 그 전 발사는 서버가 버림 (SHEEP-123)
+    static async Task DrawThenWait(WebSocket ws, double duelAt)
+    {
+        await Send(ws, JsonSerializer.Serialize(new { type = "draw", at = duelAt }));
+        await Task.Delay(TimeSpan.FromMilliseconds(Revolver.DrawDuration + 50));
+    }
+
     static async Task<JsonElement> ReceiveWhere(WebSocket ws, Func<JsonElement, bool> match, TimeSpan? wait = null)
     {
         // 서버가 안 보내면 영원히 기다리지 않고 5초(판을 기다리는 테스트는 wait) 뒤 실패함. state가 계속 와도 늘어나지 않음

@@ -236,6 +236,30 @@ public class Room
         }
     }
 
+    // D 키로 총을 뽑기 시작함 (기술 설계서 메시지 draw, SHEEP-123). at은 클라가 누른 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계. 답은 없고
+    // 다음 state의 drawnAt으로 모두가 앎. "시작!" 전에 누른 것은 버림(사용자 결정 2026-11-10). 쓰러진 사람과 이미 뽑은 사람도 버림
+    public void Draw(Guid playerId, double at, double now)
+    {
+        lock (_lock)
+        {
+            // Fire와 같은 까닭으로 단계와 시각을 함께 봄. 결과가 정해져 다음 단계가 생기면 버림
+            bool dueling = (_round.Phase == RoundPhase.Duel && _round.Next == null) || (_round.Phase == RoundPhase.Walk && now >= _round.NextAt);
+            if (!dueling || !double.IsFinite(at) || at < _duelAt)
+            {
+                return;
+            }
+
+            var player = _players.Find(p => p.Id == playerId);
+            if (player == null || player.Pose == Pose.Down || player.DrawnAt != null)
+            {
+                return;
+            }
+
+            // 누른 시각은 쏜 시각처럼 W까지만 앞당겨 줌
+            player.DrawnAt = Math.Max(ShotJudge.ClampAt(at, now), _duelAt);
+        }
+    }
+
     // 발사 하나를 받아 방 안 모두에게 바로 보낼 메시지를 돌려줌. 받으면 shot 하나, 버리면 빈 목록 (기술 설계서 메시지 fire).
     // 명중은 여기서 정하지 않고 쏜 시각에서 W가 지난 틱(Step)에 정함. pitch는 위아래 각도(라디안, 위가 +).
     // at은 클라가 쏜 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계
@@ -276,6 +300,12 @@ public class Room
 
             // 맞았어도 맞은 시각에서 D 안에 쏜 발사는 받음. 서로 맞히면 함께 쓰러짐
             if (shooter.DownAt != null && at > shooter.DownAt.Value + ShotJudge.MutualWindow)
+            {
+                return messages;
+            }
+
+            // 총을 다 뽑기 전에 쏜 발사는 버림. 뽑지 않았으면 쏠 수 없음 (사용자 결정 2026-11-09, SHEEP-123)
+            if (shooter.DrawnAt == null || at < shooter.DrawnAt.Value + Revolver.DrawDuration)
             {
                 return messages;
             }
@@ -459,7 +489,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat, player.Hand));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat, player.Hand, player.DrawnAt));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -510,6 +540,7 @@ public class Room
             player.DownAt = null;
             player.Ammo = rounds;
             player.LastShotAt = null;
+            player.DrawnAt = null;
 
             // 다시 선 사람은 관전이 풀림. 서 있는 동안 누가 반샷인지 받지 않게 함
             _watching.Remove(player.Id);
