@@ -40,9 +40,10 @@ public static class RoundFlow
     // ms. 뜸을 들인 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
     public const double WalkDuration = Steps * StepInterval;
 
-    // ms. 걷기가 끝나고 "시작!"까지 무작위로 기다리는 시간의 범위 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
-    public const double MinDuelWait = 1000;
-    public const double MaxDuelWait = 3000;
+    // ms. 걷기가 끝나고 "시작!"까지 무작위로 기다리는 시간의 범위 (시스템 기획서 판 흐름 시간). 1~3초는 시작 시각을 짐작하기 쉬워
+    // 0.1~10초로 넓힘 (사용자 결정 2026-11-11, SHEEP-156). 0.1초여도 Lead 전 알림은 걷는 중에 가 늦지 않음
+    public const double MinDuelWait = 100;
+    public const double MaxDuelWait = 10000;
 
     // ms. 결투 시각("시작!")부터 이 시간 안에 쏘지 않은 사람은 자살로 쓰러짐 (시스템 기획서 판 흐름 시간).
     // 클라가 남은 시간을 보여 줄 때(round.ts DUEL_LIMIT, SHEEP-64) 같은 값을 써야 함. 5초는 사용자 결정 (2026-11-10, SHEEP-127)
