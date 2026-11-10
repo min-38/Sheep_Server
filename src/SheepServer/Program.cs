@@ -307,14 +307,6 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     }
                     return [];
 
-                case "stop":
-                    // 숫자인지 먼저 봄. 아니면 TryGetDouble이 던져 연결이 끊김. 걷는 중인지와 시각 검사는 Room.Stop이 함
-                    if (root.TryGetProperty("at", out var stopAtProp) && stopAtProp.ValueKind == JsonValueKind.Number && stopAtProp.TryGetDouble(out double stopAt))
-                    {
-                        registry.GetRoomById(roomId)?.Stop(playerId, stopAt, ServerClock.Now);
-                    }
-                    return [];
-
                 case "spectate":
                     // playerId가 id 문자열이면 그 사람을 보고, null이면 관전을 그만둠. 그 밖은 버림. 받는 조건은 Room.Spectate가 봄.
                     // TryGetGuid는 문자열이 아니면 던지므로 종류를 먼저 봄

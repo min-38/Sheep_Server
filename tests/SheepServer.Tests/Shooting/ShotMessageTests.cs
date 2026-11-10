@@ -12,13 +12,14 @@ public class ShotMessageTests
         var shooter = Guid.NewGuid();
 
         // Act
-        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new ShotMessage(shooter, 3.25), JsonSerializerOptions.Web));
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new ShotMessage(shooter, 3.25, 0.125), JsonSerializerOptions.Web));
         var root = doc.RootElement;
 
         // Assert
-        // 기술 설계서 메시지 shot: 쏜 사람 id와 쏜 각도(fire의 angle 그대로)
+        // 기술 설계서 메시지 shot: 쏜 사람 id, 쏜 각도와 위아래 각도(fire의 angle, pitch 그대로). 받는 쪽이 날아가는 총알을 그림 (SHEEP-125)
         Assert.Equal("shot", root.GetProperty("type").GetString());
         Assert.Equal(shooter, root.GetProperty("playerId").GetGuid());
         Assert.Equal(3.25, root.GetProperty("angle").GetDouble());
+        Assert.Equal(0.125, root.GetProperty("pitch").GetDouble());
     }
 }

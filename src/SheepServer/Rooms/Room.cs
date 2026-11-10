@@ -236,32 +236,6 @@ public class Room
         }
     }
 
-    // 걷다 멈추기. 그 사람은 at까지 걸은 자리에 서고 이번 라운드에는 더 걷지 않음 (기술 설계서 메시지 stop).
-    // at은 클라가 누른 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계. 답은 없음
-    public void Stop(Guid playerId, double at, double now)
-    {
-        lock (_lock)
-        {
-            // 걷기 시각과 그 뒤 첫 틱 사이에 올 수 있어 _walkAt만 보지 않고 다음 단계와 시각도 봄 (Fire의 dueling과 같은 이유)
-            double? walkAt = _walkAt ?? (_round.Next == RoundPhase.Walk && now >= _round.NextAt ? _round.NextAt : null);
-            if (walkAt == null || now >= walkAt.Value + RoundFlow.WalkDuration || !double.IsFinite(at))
-            {
-                return;
-            }
-
-            // 쓰러진 사람은 걷지 않음. 첫 stop만 씀
-            var player = _players.Find(p => p.Id == playerId);
-            if (player == null || player.Pose == Pose.Down || player.StopDistance != null)
-            {
-                return;
-            }
-
-            // 누른 시각은 쏜 시각처럼 W까지만 앞당겨 주고, 걷기 전에 누른 것은 걷기 시각에 누른 것으로 봄
-            at = Math.Max(ShotJudge.ClampAt(at, now), walkAt.Value);
-            player.StopDistance = RoundFlow.WalkDistance * Math.Clamp((at - walkAt.Value) / RoundFlow.WalkDuration, 0, 1);
-        }
-    }
-
     // D 키로 총을 뽑기 시작함 (기술 설계서 메시지 draw, SHEEP-123). at은 클라가 누른 시각, now는 서버가 받은 시각(ms). 둘 다 서버 시계. 답은 없고
     // 다음 state의 drawnAt으로 모두가 앎. "시작!" 전에 누른 것은 버림(사용자 결정 2026-11-10). 쓰러진 사람과 이미 뽑은 사람도 버림
     public void Draw(Guid playerId, double at, double now)
@@ -346,7 +320,7 @@ public class Room
             shooter.Ammo--;
             shooter.LastShotAt = at;
             _pending.Add(new Shot(playerId, angle, pitch, at));
-            messages.Add(new ShotMessage(playerId, angle));
+            messages.Add(new ShotMessage(playerId, angle, pitch));
             return messages;
         }
     }
@@ -463,25 +437,13 @@ public class Room
                 _walkAt = _round.NextAt;
                 _duelAt = next.NextAt;
 
-                // 지금 각도에 π를 더하면 안 됨. 준비 중에 돌았을 수 있어 위치로 바깥(중심에서 멀어지는 쪽)을 구함
+                // 이 라운드에 함께 쓰러지면 이 값으로 되돌림. 쓰러진 사람은 재대결에 끼지 못해 돌지도 걷지도 않음
                 foreach (var player in _players)
                 {
-                    // 쓰러진 사람은 재대결에 끼지 못해 돌지도 걷지도 않음
-                    if (player.Pose == Pose.Down)
+                    if (player.Pose != Pose.Down)
                     {
-                        continue;
+                        player.RoundStartWounds = player.Wounds;
                     }
-
-                    // 이 라운드에 함께 쓰러지면 이 값으로 되돌림
-                    player.RoundStartWounds = player.Wounds;
-
-                    // Atan2는 y를 먼저 받고 -π~π를 돌려줌. turn과 같은 0 이상 2π 미만으로 맞춤
-                    double outward = Math.Atan2(player.Y - CenterY, player.X - CenterX);
-                    if (outward < 0)
-                    {
-                        outward += 2 * Math.PI;
-                    }
-                    player.Angle = outward;
                 }
             }
 
@@ -489,11 +451,13 @@ public class Room
 
             if (_walkAt != null)
             {
-                // 틱마다 더하지 않고 걷기 시각부터 지난 시간으로 정함. 늦게 온 틱이 있어도 걷는 거리가 줄지 않음
-                double ratio = Math.Clamp((now - _walkAt.Value) / RoundFlow.WalkDuration, 0, 1);
-                double walked = RoundFlow.WalkDistance * ratio;
+                // 틱마다 더하지 않고 걷기 시각부터 지난 시간으로 정함. 늦게 온 틱이 있어도 덜 돌거나 덜 걷지 않음.
+                // 먼저 TurnDuration 동안 제자리에서 뒤돌고, 그다음 WalkDuration 동안 걸음 (SHEEP-120)
+                double elapsed = now - _walkAt.Value;
+                double turned = Math.Clamp(elapsed / RoundFlow.TurnDuration, 0, 1);
+                double ratio = Math.Clamp((elapsed - RoundFlow.TurnDuration) / RoundFlow.WalkDuration, 0, 1);
+                double distance = StartPlacement.Radius + RoundFlow.WalkDistance * ratio;
 
-                // 출발할 때 모두 중심에서 R만큼 떨어져 바깥을 봄. 그래서 지금 자리는 바라보는 쪽으로 R + 걸은 거리
                 foreach (var player in _players)
                 {
                     if (player.Pose == Pose.Down)
@@ -501,11 +465,18 @@ public class Room
                         continue;
                     }
 
-                    // 멈춘 사람은 멈춘 자리에 서서 걷기가 끝날 때까지 기다림. 그래서 "시작!"은 모두 같은 시각임
-                    double distance = StartPlacement.Radius + Math.Min(walked, player.StopDistance ?? walked);
-                    player.X = CenterX + Math.Cos(player.Angle) * distance;
-                    player.Y = CenterY + Math.Sin(player.Angle) * distance;
-                    player.Pose = ratio < 1 && player.StopDistance == null ? Pose.Walk : Pose.Stand;
+                    // 자리는 늘 중심에서 바깥으로 뻗은 선 위라 위치로 바깥을 구함. 준비 중에 돌아 둔 각도와 상관없음
+                    double outward = Math.Atan2(player.Y - CenterY, player.X - CenterX);
+                    player.X = CenterX + Math.Cos(outward) * distance;
+                    player.Y = CenterY + Math.Sin(outward) * distance;
+
+                    // 중심을 보던 데서 늘 각도가 느는 쪽으로 반 바퀴 돎. 천천히 돌기 시작해 천천히 멈춤(smoothstep).
+                    // 2π를 더한 나머지로 turn과 같은 0 이상 2π 미만으로 맞춤
+                    double eased = turned * turned * (3 - 2 * turned);
+                    player.Angle = (outward - Math.PI + Math.PI * eased + 4 * Math.PI) % (2 * Math.PI);
+
+                    // 도는 동안에도 제자리에서 발을 떼어 Walk. 클라가 걷기 시각부터 지난 시간으로 도는 발과 걷는 발을 가름
+                    player.Pose = ratio < 1 ? Pose.Walk : Pose.Stand;
                 }
 
                 // 다 걸으면 그만 계산함. 계속하면 결투 중에 돌 때마다 자리가 원을 따라 미끄러짐
@@ -571,9 +542,6 @@ public class Room
             player.LastShotAt = null;
             player.DrawnAt = null;
 
-            // 걷기가 시작하는 틱이 아니라 여기서 지움. 걷기 시각과 그 틱 사이에 온 stop이 지워지지 않게 함
-            player.StopDistance = null;
-
             // 다시 선 사람은 관전이 풀림. 서 있는 동안 누가 반샷인지 받지 않게 함
             _watching.Remove(player.Id);
         }
@@ -617,14 +585,15 @@ public class Room
             {
                 target.Pose = Pose.Down;
                 target.DownAt = outcome.At;
-                messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot));
+                messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot, outcome.Zone, outcome.Height, outcome.X, outcome.Y));
 
                 // 판정이 쏜 시각 순서라 이 발사가 마지막으로 맞힌 발사임. 쓰러진 사람의 다시 보기에만 쓰여 관전자에게 복사하지 않음
                 messages.Add(new Direct(target.Id, new DownedByMessage(outcome.ShooterId, outcome.At, outcome.Zone!.Value)));
             }
             else
             {
-                AddDirect(messages, target.Id, new WoundedMessage());
+                // 반샷은 모두가 봄 (사용자 결정 2026-11-09, SHEEP-126). 모두에게 가므로 관전자에게 따로 복사하지 않음
+                messages.Add(new WoundedMessage(target.Id, outcome.Height, outcome.X, outcome.Y));
             }
         }
         return messages;

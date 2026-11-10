@@ -572,7 +572,7 @@ public class RoomTests
         AddReady(_a, _b);
         _room.Step(1000);
         double countdownAt = 1000 + RoundFlow.Lead;
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
 
         // Act
         var atCountdown = _room.Step(countdownAt);
@@ -590,7 +590,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
 
         // Act
         var (announcedAt, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
@@ -660,7 +660,7 @@ public class RoomTests
         var state = messages.OfType<StateMessage>().Single();
 
         // Assert
-        AssertAnnounces(messages, RoundPhase.Walk, countdownAt + 3 * RoundFlow.CountdownInterval); // 남은 둘로 판이 이어짐
+        AssertAnnounces(messages, RoundPhase.Walk, countdownAt + RoundFlow.CountdownDuration); // 남은 둘로 판이 이어짐
         Assert.Equal(2, state.Players.Count);
         Assert.DoesNotContain(state.Players, p => p.Id == _c);
         // 남은 사람을 다시 세우면 판 도중에 자리가 바뀜
@@ -682,23 +682,33 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_WalkStarts_EveryoneTurnsOutwardAndWalks()
+    public void Step_WalkStarts_TurnsOutwardSlowlyInPlace()
     {
         // Arrange
         AddReady(_a, _b, _c);
-        _room.SetAngle(_a, 1.0); // 준비 중에 돌아 둔 각도는 걷는 방향과 상관없음
+        _room.SetAngle(_a, 1.0); // 준비 중에 돌아 둔 각도는 도는 방향과 상관없음
         double walkAt = ScheduleWalk(_room);
 
         // Act
-        var state = StateAt(walkAt);
+        var atStart = StateAt(walkAt);
+        var halfway = StateAt(walkAt + RoundFlow.TurnDuration / 2);
+        var turned = StateAt(walkAt + RoundFlow.TurnDuration);
 
         // Assert
-        foreach (var player in state.Players)
+        // 걷기 시각에 한 번에 돌지 않고 TurnDuration 동안 제자리에서 천천히 돎 (SHEEP-120). 처음엔 중심을 보고,
+        // 반쯤이면 바깥에서 4분의 1바퀴 모자란 쪽(각도가 느는 쪽으로 돎)을 보고, 다 돌면 바깥을 봄. 도는 동안도 발을 떼어 Walk
+        AssertFacesCenterAtStart(atStart, _a, _b, _c);
+        string[] names = ["a", "b", "c"];
+        Guid[] ids = [_a, _b, _c];
+        for (int i = 0; i < 3; i++)
         {
-            AssertFacesOutward(player);
+            var player = Find(halfway, ids[i]);
+            AssertWalked(3, i, 0, player);
+            AssertFacesOutwardLess(player, Math.PI / 2, names[i]);
             Assert.Equal(Pose.Walk, player.Pose);
+            AssertFacesOutward(Find(turned, ids[i]));
+            AssertWalked(3, i, 0, Find(turned, ids[i]));
         }
-        AssertWalked(3, 0, 0, Find(state, _a)); // 막 출발해 아직 시작 자리임
     }
 
     [Fact]
@@ -710,7 +720,7 @@ public class RoomTests
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 같은 속도로 걸으니 시간이 절반이면 거리도 절반
@@ -728,7 +738,7 @@ public class RoomTests
         _room.Step(walkAt + 40); // 틱은 50ms마다라 걷기 시각보다 늦게 옴
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 늦게 온 틱부터 재면 덜 걸어서, 걷기가 끝날 때 R + 걷는 거리에 못 미침 (RoundFlow가 NextAt에 더하는 것과 같은 이유)
@@ -741,7 +751,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
         _room.Step(walkAt);
 
         // Act
@@ -751,6 +761,10 @@ public class RoomTests
         // Assert
         AssertWalked(2, 0, RoundFlow.WalkDistance, Find(atEnd, _a));
         AssertWalked(2, 1, RoundFlow.WalkDistance, Find(atEnd, _b));
+        // 모두 10걸음을 걸어 마주 선 두 사람 사이는 8칸 (사용자 결정 2026-11-10, SHEEP-120)
+        var a = Find(atEnd, _a);
+        var b = Find(atEnd, _b);
+        Assert.Equal(8, Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y)), Tolerance);
         Assert.All(atEnd.Players, p => Assert.Equal(Pose.Stand, p.Pose));
         AssertWalked(2, 0, RoundFlow.WalkDistance, Find(later, _a)); // 걷는 거리에 닿으면 더 가지 않음
         AssertFacesOutward(Find(later, _a)); // 멈춘 뒤에도 바깥을 보고 섬
@@ -773,7 +787,7 @@ public class RoomTests
         room.Step(walkAt);
 
         // Act
-        var state = room.Step(walkAt + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
+        var state = room.Step(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
 
         // Assert
         // 기술 설계서 결투장 크기: 8명이 걷기를 마쳐도 벽에 닿지 않음
@@ -795,12 +809,15 @@ public class RoomTests
 
         // Act
         _room.SetAngle(_a, 1.0);
-        var state = StateAt(walkAt + 100);
+        var turning = StateAt(walkAt + RoundFlow.TurnDuration / 2);
+        _room.SetAngle(_a, 1.0);
+        var walking = StateAt(walkAt + RoundFlow.TurnDuration + 100);
 
         // Assert
-        // 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
-        AssertFacesOutward(Find(state, _a));
-        AssertWalked(2, 0, RoundFlow.WalkDistance * 100 / RoundFlow.WalkDuration, Find(state, _a));
+        // 돌고 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
+        AssertFacesOutwardLess(Find(turning, _a), Math.PI / 2, "a");
+        AssertFacesOutward(Find(walking, _a));
+        AssertWalked(2, 0, RoundFlow.WalkDistance * 100 / RoundFlow.WalkDuration, Find(walking, _a));
     }
 
     [Fact]
@@ -818,210 +835,6 @@ public class RoomTests
         // Assert
         // 카운트다운부터 "시작!" 전까지는 돌기와 같이 버림 (기술 설계서 메시지 turn)
         Assert.Equal(0, Find(state, _a).Pitch);
-    }
-
-    [Fact]
-    public void Stop_DuringWalk_StaysAtStopDistance()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
-        var atEnd = StateAt(walkAt + RoundFlow.WalkDuration);
-        var later = StateAt(walkAt + RoundFlow.WalkDuration + 1000);
-
-        // Assert
-        // 걷기 1초에 멈춤. 걷는 시간의 3분의 1이라 최대 걸음의 3분의 1에 섬. 멈추지 않은 b는 끝까지 걸음
-        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(atEnd, _a));
-        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(later, _a));
-        AssertFacesOutward(Find(later, _a));
-        AssertWalked(2, 1, RoundFlow.WalkDistance, Find(later, _b));
-    }
-
-    [Fact]
-    public void Stop_StoppedPlayer_PoseStand()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
-        var state = StateAt(walkAt + 1500);
-
-        // Assert
-        // 멈춘 사람은 걷기 단계에도 서 있음. 그래서 다른 사람 화면에서 발소리가 그침 (기술 설계서 메시지 state)
-        Assert.Equal(Pose.Stand, Find(state, _a).Pose);
-        Assert.Equal(Pose.Walk, Find(state, _b).Pose);
-    }
-
-    [Fact]
-    public void Stop_BeforeWalk_Ignored()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room); // 카운트다운 중
-
-        // Act
-        _room.Stop(_a, walkAt - 100, walkAt - 100);
-        _room.Step(walkAt);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_AfterWalkEnds_Ignored()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.WalkDuration;
-        _room.Step(walkAt);
-
-        // Act
-        // 걷기가 끝나는 시각에 도착함. 쏜 시각처럼 at을 앞당겨 주지 않고 도착 시각으로 가름
-        _room.Stop(_a, walkEnd - 20, walkEnd);
-        var state = StateAt(walkEnd + 50);
-
-        // Assert
-        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_Twice_FirstWins()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
-        _room.Stop(_a, walkAt + 2000, walkAt + 2010);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        // 한 번 멈추면 다시 걷지 않음. 두 번째 stop으로 더 가지도 않음
-        AssertWalked(2, 0, RoundFlow.WalkDistance / 3, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_AtLaterThanArrival_ClampedToArrival()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt + 2500, walkAt + 1500);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        // 도착보다 늦게 누를 수는 없어 도착 시각에 멈춘 것으로 봄 (fire의 쏜 시각과 같음)
-        AssertWalked(2, 0, RoundFlow.WalkDistance * 1500 / RoundFlow.WalkDuration, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_AtMoreThanMaxDelayBeforeArrival_Clamped()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt + 500, walkAt + 1500);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        // 지연 보정은 W까지만 해 줌. 그래서 도착 시각 - W에 멈춘 것으로 봄
-        AssertWalked(2, 0, RoundFlow.WalkDistance * (1500 - ShotJudge.MaxDelay) / RoundFlow.WalkDuration, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_AtBeforeWalkStart_StaysAtStart()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(_a, walkAt - 100, walkAt + 50);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        // 걷기 전에 누른 것은 걷기 시각에 누른 것으로 봄. 한 걸음도 걷지 않음
-        AssertWalked(2, 0, 0, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_BeforeWalkStartTick_Applied()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-
-        // Act
-        // 걷기 시각은 지났지만 그 뒤 첫 틱이 아직 오지 않았을 때 도착함
-        _room.Stop(_a, walkAt + 10, walkAt + 20);
-        _room.Step(walkAt + 40);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        AssertWalked(2, 0, RoundFlow.WalkDistance * 10 / RoundFlow.WalkDuration, Find(state, _a));
-    }
-
-    [Fact]
-    public void Stop_PlayerNotInRoom_Ignored()
-    {
-        // Arrange
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-
-        // Act
-        _room.Stop(Guid.NewGuid(), walkAt + 1000, walkAt + 1010);
-        var state = StateAt(walkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
-        AssertWalked(2, 1, RoundFlow.WalkDistance, Find(state, _b));
-    }
-
-    [Fact]
-    public void Stop_NextRound_WalksAgainFully()
-    {
-        // Arrange
-        // 첫 라운드에 a가 걷다 멈추고, 아무도 쏘지 않아 둘 다 시간 초과로 쓰러져 다음 라운드로 감
-        AddReady(_a, _b);
-        double walkAt = ScheduleWalk(_room);
-        _room.Step(walkAt);
-        _room.Stop(_a, walkAt + 1000, walkAt + 1010);
-        var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt + 50);
-        _room.Step(duelAt);
-        double deadline = duelAt + RoundFlow.DuelLimit;
-        _room.Step(deadline + ShotJudge.MaxDelay);
-        double decidedAt = deadline + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
-        _room.Step(decidedAt);
-        double countdownAt = decidedAt + RoundFlow.ResultDuration;
-        _room.Step(countdownAt);
-        double nextWalkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
-        _room.Step(nextWalkAt);
-
-        // Act
-        var state = StateAt(nextWalkAt + RoundFlow.WalkDuration);
-
-        // Assert
-        // 멈춘 자리는 그 라운드에만 씀. 다음 라운드에는 다시 최대 걸음까지 걸음
-        AssertWalked(2, 0, RoundFlow.WalkDistance, Find(state, _a));
     }
 
     [Fact]
@@ -1405,10 +1218,10 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuel();
-        _room.Fire(_a, 0, 0, duelAt, duelAt + 20); // 아무도 안 맞게 바깥으로 쏨
+        _room.Fire(_a, 0, 0, duelAt + Drawn, duelAt + Drawn + 20); // 아무도 안 맞게 바깥으로 쏨
 
         // Act
-        double next = duelAt + Revolver.FireInterval;
+        double next = duelAt + Drawn + Revolver.FireInterval;
         var messages = _room.Fire(_a, 0, 0, next, next + 20);
 
         // Assert
@@ -1438,7 +1251,7 @@ public class RoomTests
         // Arrange
         // 셋이어야 b가 쓰러져도 결투가 이어짐. 둘이면 a가 이겨 결과 뒤의 발사로 버려짐
         double duelAt = StartDuelWith(_a, _b, _c);
-        double hitAt = duelAt + 100;
+        double hitAt = duelAt + Drawn + 100;
         _room.Fire(_a, AToB, HeadInTriangle, hitAt, hitAt + 20);
         _room.Step(hitAt + ShotJudge.MaxDelay); // b가 쓰러짐
 
@@ -1457,11 +1270,11 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuelWith(_a, _b, _c); // 셋이어야 b가 쓰러져도 결투가 이어짐
-        _room.Fire(_a, AToB, HeadInTriangle, duelAt + 100, duelAt + 120);
-        _room.Step(duelAt + 100 + ShotJudge.MaxDelay); // b가 쓰러짐
+        _room.Fire(_a, AToB, HeadInTriangle, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay); // b가 쓰러짐
 
         // Act
-        double at = duelAt + 100 + ShotJudge.MaxDelay;
+        double at = duelAt + Drawn + 100 + ShotJudge.MaxDelay;
         _room.Fire(_c, CToB, 0, at, at + 20); // a는 한 발을 다 써서 c가 쓰러진 b를 겨눠 쏨
         var messages = _room.Step(at + ShotJudge.MaxDelay);
 
@@ -1484,8 +1297,8 @@ public class RoomTests
         double duelAt = StartDuel();
 
         // Act
-        var messages = _room.Fire(_a, angle, 0, duelAt + afterDuel, duelAt + 120);
-        var state = StateAt(duelAt + 150);
+        var messages = _room.Fire(_a, angle, 0, duelAt + Drawn + afterDuel, duelAt + Drawn + 120);
+        var state = StateAt(duelAt + Drawn + 150);
 
         // Assert
         Assert.Empty(messages);
@@ -1504,8 +1317,8 @@ public class RoomTests
         double duelAt = StartDuel();
 
         // Act
-        var messages = _room.Fire(_a, Math.PI, pitch, duelAt + 100, duelAt + 120);
-        var state = StateAt(duelAt + 100 + ShotJudge.MaxDelay);
+        var messages = _room.Fire(_a, Math.PI, pitch, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        var state = StateAt(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
         Assert.Empty(messages);
@@ -1553,7 +1366,7 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_BodyHit_TargetGetsWoundedOnly_NoEliminated()
+    public void Step_BodyHit_EveryoneGetsWoundedWithHitPoint_NoEliminated()
     {
         // Arrange
         double duelAt = StartDuel();
@@ -1563,7 +1376,9 @@ public class RoomTests
         var messages = _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
-        // 쏜 a에게는 사격 결과(몸, 안 쓰러짐)를, 맞은 b에게만 반샷을 알림. 탈락은 없고 b는 서 있음 (기술 설계서 메시지 wounded)
+        // 쏜 a에게는 사격 결과(몸, 안 쓰러짐)를, 방 안 모두에게 b의 반샷과 맞은 자리를 알림. 맞은 자리는 a 쪽(+x) 몸 옆면.
+        // 탈락은 없고 b는 서 있음 (기술 설계서 메시지 wounded, SHEEP-126)
+        var b = Find(Assert.IsType<StateMessage>(messages[^1]), _b);
         Assert.Collection(
             messages,
             m =>
@@ -1576,11 +1391,33 @@ public class RoomTests
             },
             m =>
             {
-                var direct = Assert.IsType<Direct>(m);
-                Assert.Equal(_b, direct.To);
-                Assert.IsType<WoundedMessage>(direct.Message);
+                var wounded = Assert.IsType<WoundedMessage>(m);
+                Assert.Equal(_b, wounded.PlayerId);
+                Assert.Equal(HitZone.Body, wounded.Zone);
+                Assert.Equal(b.X + HitScan.BodyRadius, wounded.X, Tolerance);
+                Assert.Equal(b.Y, wounded.Y, Tolerance);
             },
             m => Assert.Equal(Pose.Stand, Find(Assert.IsType<StateMessage>(m), _b).Pose));
+    }
+
+    [Fact]
+    public void Step_HeadHit_EliminatedCarriesHitPoint()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, HeadAcross, duelAt + Drawn + 100, duelAt + Drawn + 120);
+
+        // Act
+        var messages = _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 탈락에도 맞은 자리를 담아 모두가 머리에서 피가 튀는 것을 봄 (기술 설계서 메시지 eliminated, SHEEP-126)
+        var b = Find(messages.OfType<StateMessage>().Single(), _b);
+        var eliminated = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal(HitZone.Head, eliminated.Zone);
+        Assert.Equal(b.X + HitScan.HeadRadius, eliminated.X!.Value, Tolerance);
+        Assert.Equal(b.Y, eliminated.Y!.Value, Tolerance);
+        Assert.InRange(eliminated.Height!.Value, HitScan.BodyTop, HitScan.HeadTop);
     }
 
     [Fact]
@@ -1603,7 +1440,7 @@ public class RoomTests
         // Assert
         // 반샷은 판이 끝날 때까지 남아 두 번째 몸 명중에 쓰러짐 (컨셉 기획서 규칙)
         Assert.Equal(_b, Assert.Single(messages.OfType<EliminatedMessage>()).PlayerId);
-        Assert.DoesNotContain(messages.OfType<Direct>(), d => d.Message is WoundedMessage);
+        Assert.Empty(messages.OfType<WoundedMessage>());
     }
 
     [Fact]
@@ -1632,7 +1469,7 @@ public class RoomTests
         Assert.Equal(new[] { _b, _a }, hit.OfType<EliminatedMessage>().Select(m => m.PlayerId));
         AssertResult(Assert.Single(result.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
         Assert.Empty(messages.OfType<EliminatedMessage>());
-        Assert.Equal(_b, Assert.Single(messages.OfType<Direct>(), d => d.Message is WoundedMessage).To);
+        Assert.Equal(_b, Assert.Single(messages.OfType<WoundedMessage>()).PlayerId);
     }
 
     [Fact]
@@ -1693,7 +1530,7 @@ public class RoomTests
         // Assert
         // 판이 끝나면 반샷이 모두 사라져 새 판의 첫 몸 명중은 반샷 하나임
         Assert.Empty(messages.OfType<EliminatedMessage>());
-        Assert.Equal(_b, Assert.Single(messages.OfType<Direct>(), d => d.Message is WoundedMessage).To);
+        Assert.Equal(_b, Assert.Single(messages.OfType<WoundedMessage>()).PlayerId);
     }
 
     [Fact]
@@ -1704,8 +1541,8 @@ public class RoomTests
 
         // Act
         // b를 겨눴지만 위를 보고 쏨. 위아래 각도도 판정에 들어감
-        _room.Fire(_a, AToB, 0.4, duelAt + 100, duelAt + 120);
-        var state = StateAt(duelAt + 100 + ShotJudge.MaxDelay);
+        _room.Fire(_a, AToB, 0.4, duelAt + Drawn + 100, duelAt + Drawn + 120);
+        var state = StateAt(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
 
         // Assert
         Assert.Equal(Pose.Stand, Find(state, _b).Pose);
@@ -2030,11 +1867,11 @@ public class RoomTests
         // Arrange
         double countdownAt = RematchAAndBWithCDown();
         var downBefore = Find(StateAt(countdownAt), _c);
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 걷기는 재대결하는 사람만 함. 쓰러진 c는 돌지도 걷지도 일어서지도 않음
@@ -2052,7 +1889,7 @@ public class RoomTests
         // Arrange
         double countdownAt = RematchAAndBWithCDown();
         _room.Step(countdownAt);
-        double walkAt = countdownAt + 3 * RoundFlow.CountdownInterval;
+        double walkAt = countdownAt + RoundFlow.CountdownDuration;
         var (_, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
         _room.Step(duelAt + Drawn);
 
@@ -2546,14 +2383,14 @@ public class RoomTests
         room.Step(from); // 카운트다운이 정해짐
         double countdownAt = from + RoundFlow.Lead;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
-        return countdownAt + 3 * RoundFlow.CountdownInterval;
+        return countdownAt + RoundFlow.CountdownDuration;
     }
 
     // 걷기 시각부터 50ms마다 틱을 돌려 결투 알림을 찾음. 알린 틱의 시각과 알린 결투 시각을 돌려줌
     // draw면 그때 서 있는 사람 모두가 결투 시각에 D 키로 총을 뽑음. 그래서 결투 시각 + Drawn부터 쏠 수 있음 (SHEEP-123)
     private static (double AnnouncedAt, double DuelAt) StepUntilDuelAnnounced(Room room, double walkAt, bool draw = true)
     {
-        for (double now = walkAt; now <= walkAt + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
+        for (double now = walkAt; now <= walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
         {
             var messages = room.Step(now);
             var phase = messages.OfType<PhaseMessage>().SingleOrDefault();
@@ -2592,6 +2429,13 @@ public class RoomTests
         double dy = player.Y - CenterY;
         Assert.Equal(Math.Sqrt(dx * dx + dy * dy), Math.Cos(player.Angle) * dx + Math.Sin(player.Angle) * dy, Tolerance);
         Assert.True(player.Angle >= 0 && player.Angle < 2 * Math.PI, $"angle {player.Angle}는 turn과 같은 범위(0 이상 2π 미만)여야 함");
+    }
+
+    // 바깥에서 less(라디안)만큼 덜 돈 쪽을 보는지 봄. 각도는 0과 2π에서 이어지므로 cos, sin으로 견줌
+    private static void AssertFacesOutwardLess(PlayerState player, double less, string name)
+    {
+        double expected = Math.Atan2(player.Y - CenterY, player.X - CenterX) - less;
+        Assert.True(Math.Abs(Math.Cos(expected) - Math.Cos(player.Angle)) < Tolerance && Math.Abs(Math.Sin(expected) - Math.Sin(player.Angle)) < Tolerance, $"{name}: angle {player.Angle}, 기대 {expected}");
     }
 
     // ids의 i번째 사람이 그 인원수의 i번 시작 자리에 서서 중심을 보고, 위아래로는 정면을 보는지 봄
@@ -2648,7 +2492,7 @@ public class RoomTests
     private double StartNextRound(double countdownAt)
     {
         _room.Step(countdownAt);
-        var (_, duelAt) = StepUntilDuelAnnounced(_room, countdownAt + 3 * RoundFlow.CountdownInterval);
+        var (_, duelAt) = StepUntilDuelAnnounced(_room, countdownAt + RoundFlow.CountdownDuration);
         _room.Step(duelAt);
         return duelAt;
     }

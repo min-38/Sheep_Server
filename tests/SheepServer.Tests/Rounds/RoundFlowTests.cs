@@ -7,8 +7,6 @@ public class RoundFlowTests
     // 시드는 걷기가 시작할 때 무작위 대기를 정하는 데만 쓰임. 다른 단계에서는 결과에 영향이 없음
     private const int Seed = 7;
 
-    // 3, 2, 1을 카운트다운 간격마다 보여 주므로 카운트다운은 간격의 3배 (시스템 기획서 판 흐름 시간)
-    private static readonly double CountdownDuration = 3 * RoundFlow.CountdownInterval;
     private static readonly Round Lobby = new(RoundPhase.Lobby, null, 0);
 
     private static readonly Guid A = Guid.NewGuid();
@@ -45,6 +43,14 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void DuelLimit_FiveSeconds()
+    {
+        // Assert
+        // 결투 시각부터 5초 안에 쏘지 않으면 시간 초과로 쓰러짐 (시스템 기획서 판 흐름 시간, SHEEP-127)
+        Assert.Equal(5000, RoundFlow.DuelLimit);
+    }
+
+    [Fact]
     public void Advance_BeforeScheduledTime_Unchanged()
     {
         // Arrange
@@ -64,7 +70,8 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, 2, 2, Seed);
 
         // Assert
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
+        // 카운트다운은 4초. 그동안 모두 함께 2.5초에 걸쳐 장전하고 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121)
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + 4000), round);
     }
 
     [Fact]
@@ -74,8 +81,8 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Countdown, RoundPhase.Walk, 4500), 4500, 2, 2, Seed);
 
         // Assert
-        // 결투 시각은 걷기가 끝난 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
-        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
+        // 결투 시각은 돌고 다 걸은 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
+        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
     }
 
     [Fact]
@@ -147,7 +154,7 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1540, 2, 2, Seed);
 
         // Assert
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + RoundFlow.CountdownDuration), round);
     }
 
     [Theory]
@@ -160,7 +167,7 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, players, ready, Seed);
 
         // Assert
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + CountdownDuration), round);
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + RoundFlow.CountdownDuration), round);
     }
 
     [Fact]
@@ -182,7 +189,7 @@ public class RoundFlowTests
 
         // Assert
         // 재대결은 결과를 보여 준 뒤 첫 판처럼 카운트다운부터 다시 함 (컨셉 기획서 게임 루프)
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 20_000 + CountdownDuration), round);
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 20_000 + RoundFlow.CountdownDuration), round);
     }
 
     [Theory]
