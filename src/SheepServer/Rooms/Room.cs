@@ -401,7 +401,7 @@ public class Room
             // 새 판 카운트다운이 정해질 때와 시작할 때 모두 제자리에서 중심과 정면을 봄. 준비 중에 늦게 온 turn과, 들고 날 때 자리만 옮기는 ArrangePlayers가
             // 시작 각도를 바꿔 둠. 자리는 옮기지 않음. 판이 정해진 뒤 나간 사람이 있어도 남은 사람은 그 자리에 섬.
             // 정해질 때 맞추는 것은 술집을 나서는 장면 끝에 결투장이 드러날 때 이미 가운데를 보게 하려는 것이고 (SHEEP-167),
-            // 시작할 때 다시 맞추는 것은 그 장면 동안 누가 나가 ArrangePlayers가 자리를 옮긴 경우 때문임
+            // 시작할 때 다시 맞추는 것은 SetAngle이 그 장면 동안의 turn은 아직 받아 늦게 온 turn이 각도를 바꿀 수 있기 때문임
             bool scheduled = _round.Next == null && next.Phase == RoundPhase.Lobby && next.Next == RoundPhase.Countdown;
             bool starts = _rematchers == null && _round.Phase != RoundPhase.Countdown && next.Phase == RoundPhase.Countdown;
             if (scheduled || starts)
