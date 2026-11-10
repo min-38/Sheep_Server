@@ -12,15 +12,21 @@ public static class RoundFlow
     // ms. 3, 2, 1을 이 간격마다 보여 줌 (시스템 기획서 판 흐름 시간). ponytail: 임시 값
     public const double CountdownInterval = 1000;
 
-    // 칸. 최대 걸음. 멈추지 않으면 걷기가 끝날 때 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간).
-    // 걷다 멈춘 사람은 그보다 덜 감. ponytail: 임시 값. 플레이해 보며 정함
-    public const double WalkDistance = 3;
+    // ms. 걷기 시각에 중심을 보던 사람이 제자리에서 바깥으로 천천히 뒤도는 시간. 그 뒤에 걸음 (사용자 결정 2026-11-09, SHEEP-120).
+    // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
+    public const double TurnDuration = 1000;
 
-    // 칸/초. 모두 같은 속도로 걸음 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
-    public const double WalkSpeed = 1;
+    // 모두 멈추지 않고 Steps걸음을 StepInterval(ms)마다 StepLength(칸)씩 걸음 (사용자 결정 2026-11-10, SHEEP-120).
+    // 걸음 길이는 마주 선 거리 2 × (StartPlacement.Radius + WalkDistance) = 8칸을 그대로 두려고 0.3칸
+    public const int Steps = 10;
+    public const double StepLength = 0.3;
+    public const double StepInterval = 500;
 
-    // ms. 걷는 거리와 속도로 정해짐. 거리 ÷ 속도는 초라서 1000을 곱함
-    public const double WalkDuration = WalkDistance / WalkSpeed * 1000;
+    // 칸. 다 걸으면 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간)
+    public const double WalkDistance = Steps * StepLength;
+
+    // ms. 다 돈 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
+    public const double WalkDuration = Steps * StepInterval;
 
     // ms. 걷기가 끝나고 "시작!"까지 무작위로 기다리는 시간의 범위 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
     public const double MinDuelWait = 1000;
@@ -63,8 +69,8 @@ public static class RoundFlow
         return current.Next switch
         {
             RoundPhase.Countdown => new Round(RoundPhase.Countdown, RoundPhase.Walk, current.NextAt + 3 * CountdownInterval),
-            // 결투 시각은 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
-            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + WalkDuration + DuelWait(seed)),
+            // 결투 시각은 돌고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
+            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + WalkDuration + DuelWait(seed)),
             // 결투 다음은 결과가 정해져야 알 수 있어 시각은 쓰지 않음
             RoundPhase.Duel => new Round(RoundPhase.Duel, null, 0),
             // 승리 결과를 다 보여 주면 준비 중으로 돌아감. 다음 판은 다시 모두 준비할 때 정함

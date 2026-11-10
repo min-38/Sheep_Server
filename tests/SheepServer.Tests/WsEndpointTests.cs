@@ -740,12 +740,12 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
     }
 
     [Fact]
-    public async Task Stop_NotANumber_IgnoredAndConnectionKeepsWorking()
+    public async Task Stop_Removed_IgnoredAndConnectionKeepsWorking()
     {
         using var ws = await Connect();
         await Request(ws, """{"type":"createRoom","nickname":"보안관"}""");
 
-        // 숫자가 아닌 시각과 빠진 시각은 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
+        // 걷다 멈추기는 없앰(SHEEP-120). 예전 클라가 보내도 모르는 type이라 버림. 이것 때문에 연결이 끊기면 아래 clockSync의 답이 오지 않음
         await Send(ws, """{"type":"stop","at":"100"}""");
         await Send(ws, """{"type":"stop"}""");
         await Send(ws, """{"type":"stop","at":100}""");
