@@ -17,14 +17,16 @@ public class RoundFlowTests
     [Theory]
     [InlineData(2)]
     [InlineData(7)]
-    public void Advance_AllReady_SchedulesCountdownAfterLead(int players)
+    public void Advance_AllReady_SchedulesCountdownAfterEnterScene(int players)
     {
         // Act
         var round = RoundFlow.Advance(Lobby, 1000, players, players, Seed);
 
         // Assert
-        // 카운트다운은 바로 시작하지 않음. 지연이 큰 사람도 시작 전에 알림을 받도록 Lead 뒤로 잡음
-        Assert.Equal(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1000 + RoundFlow.Lead), round);
+        // 카운트다운은 바로 시작하지 않음. 술집 문을 나서는 장면을 보여 줄 EnterDuration 뒤로 잡음 (SHEEP-137).
+        // 이 시간은 Lead보다 길어 지연이 큰 사람도 시작 전에 알림을 받음
+        Assert.True(RoundFlow.EnterDuration >= RoundFlow.Lead);
+        Assert.Equal(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1000 + RoundFlow.EnterDuration), round);
     }
 
     [Theory]
@@ -82,7 +84,7 @@ public class RoundFlowTests
 
         // Assert
         // 결투 시각은 돌고 다 걸은 뒤 무작위로 기다린 시각. 아직 알리지 않아 Next는 비워 둠 (기술 설계서 메시지 phase)
-        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
+        Assert.Equal(new Round(RoundPhase.Walk, null, 4500 + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration + RoundFlow.DuelWait(Seed)), round);
     }
 
     [Fact]

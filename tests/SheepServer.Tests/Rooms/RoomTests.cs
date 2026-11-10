@@ -545,7 +545,7 @@ public class RoomTests
         var second = _room.Step(1050);
 
         // Assert
-        AssertAnnounces(first, RoundPhase.Countdown, 1000 + RoundFlow.Lead);
+        AssertAnnounces(first, RoundPhase.Countdown, 1000 + RoundFlow.EnterDuration);
         Assert.Single(first.OfType<StateMessage>()); // state는 알림과 별개로 틱마다 감
         Assert.Empty(second.OfType<PhaseMessage>()); // 같은 알림을 틱마다 되풀이하지 않음
     }
@@ -571,7 +571,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         _room.Step(1000);
-        double countdownAt = 1000 + RoundFlow.Lead;
+        double countdownAt = 1000 + RoundFlow.EnterDuration;
         double walkAt = countdownAt + RoundFlow.CountdownDuration;
 
         // Act
@@ -590,7 +590,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration;
 
         // Act
         var (announcedAt, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
@@ -652,7 +652,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b, _c);
         var before = StateAt(1000); // 판이 정해짐
-        double countdownAt = 1000 + RoundFlow.Lead;
+        double countdownAt = 1000 + RoundFlow.EnterDuration;
 
         // Act
         _room.RemovePlayer(_c);
@@ -712,6 +712,27 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_AfterTurning_PausesInPlaceBeforeWalking()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        var pausing = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause / 2);
+        var firstStep = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause);
+
+        // Assert
+        // 다 돈 뒤 바로 걷지 않고 TurnPause 동안 바깥을 보고 제자리에 서서 뜸을 들임 (사용자 결정 2026-11-10, SHEEP-141)
+        var a = Find(pausing, _a);
+        AssertWalked(2, 0, 0, a);
+        AssertFacesOutward(a);
+        Assert.Equal(Pose.Stand, a.Pose);
+        AssertWalked(2, 0, 0, Find(firstStep, _a));
+    }
+
+    [Fact]
     public void Step_HalfwayThroughWalk_HalfTheDistanceOutward()
     {
         // Arrange
@@ -720,7 +741,7 @@ public class RoomTests
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 같은 속도로 걸으니 시간이 절반이면 거리도 절반
@@ -738,7 +759,7 @@ public class RoomTests
         _room.Step(walkAt + 40); // 틱은 50ms마다라 걷기 시각보다 늦게 옴
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 늦게 온 틱부터 재면 덜 걸어서, 걷기가 끝날 때 R + 걷는 거리에 못 미침 (RoundFlow가 NextAt에 더하는 것과 같은 이유)
@@ -751,7 +772,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration;
         _room.Step(walkAt);
 
         // Act
@@ -787,7 +808,7 @@ public class RoomTests
         room.Step(walkAt);
 
         // Act
-        var state = room.Step(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
+        var state = room.Step(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
 
         // Assert
         // 기술 설계서 결투장 크기: 8명이 걷기를 마쳐도 벽에 닿지 않음
@@ -811,7 +832,7 @@ public class RoomTests
         _room.SetAngle(_a, 1.0);
         var turning = StateAt(walkAt + RoundFlow.TurnDuration / 2);
         _room.SetAngle(_a, 1.0);
-        var walking = StateAt(walkAt + RoundFlow.TurnDuration + 100);
+        var walking = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + 100);
 
         // Assert
         // 돌고 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
@@ -843,11 +864,11 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         _room.Step(1000); // 카운트다운이 정해짐
-        var before = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+        var before = StateAt(1000 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Act
         _room.SetAngle(_a, 1.0);
-        var state = StateAt(1000 + RoundFlow.Lead + 50);
+        var state = StateAt(1000 + RoundFlow.EnterDuration + 50);
 
         // Assert
         // "시작!" 전에 온 돌기는 버림 (기술 설계서 메시지 turn). 클라도 카운트다운부터 입력을 잠금
@@ -1515,7 +1536,7 @@ public class RoomTests
         _room.Fire(_b, 0, HeadAcross, second + Drawn, second + Drawn + 20);
         double won = second + Drawn + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(won);
-        double lobbyAt = won + RoundFlow.ResultDuration;
+        double lobbyAt = won + RoundFlow.WinResultDuration;
         _room.Step(lobbyAt);
         _room.SetReady(_a, true);
         _room.SetReady(_b, true);
@@ -1577,14 +1598,15 @@ public class RoomTests
 
         // Assert
         // b가 맞은 시각에서 D 안에 쏜 발사가 아직 올 수 있어 W + D가 지나야 승리를 정함.
-        // 결과 바로 뒤에 준비 중으로 돌아가는 시각을 알림. 그 시각은 결과를 정한 시각에 결과 시간을 더한 값 (기술 설계서 메시지 result)
+        // 결과 바로 뒤에 준비 중으로 돌아가는 시각을 알림. 그 시각은 결과를 정한 시각에 승리 결과 시간을 더한 값 (기술 설계서 메시지 result).
+        // 승리 결과는 이긴 사람 세레모니를 보여 주려고 재대결 결과보다 김 (SHEEP-136)
         Assert.Equal(_b, Assert.Single(hit.OfType<EliminatedMessage>()).PlayerId);
         Assert.Empty(hit.OfType<ResultMessage>());
         Assert.Empty(waiting.OfType<ResultMessage>());
         Assert.Collection(
             messages,
             m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Win, [_a], 0),
-            m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.ResultDuration),
+            m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.WinResultDuration),
             m => Assert.IsType<StateMessage>(m));
     }
 
@@ -1638,12 +1660,12 @@ public class RoomTests
         _room.Step(hitAt + ShotJudge.MaxDelay);
         double decidedAt = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(decidedAt);
-        var lobby = StateAt(decidedAt + RoundFlow.ResultDuration); // 준비 중으로 돌아감
+        var lobby = StateAt(decidedAt + RoundFlow.WinResultDuration); // 준비 중으로 돌아감
 
         // Act
         _room.RemovePlayer(_a);
         _room.AddPlayer(_a);
-        var rejoined = StateAt(decidedAt + RoundFlow.ResultDuration + 50);
+        var rejoined = StateAt(decidedAt + RoundFlow.WinResultDuration + 50);
 
         // Assert
         // 판이 끝나도 방에 있는 동안은 남고, 나가면 사라짐. 계정이 없어 저장하지 않음 (시스템 기획서 방 화면 현상금)
@@ -1656,7 +1678,7 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuel();
-        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.ResultDuration;
+        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.WinResultDuration;
 
         // Act
         var messages = _room.Fire(_a, 0, 0, decidedAt, decidedAt + 20);
@@ -1672,7 +1694,7 @@ public class RoomTests
         double duelAt = StartDuel(); // 둘 다 준비한 채로 판이 돎
 
         // Act
-        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.ResultDuration;
+        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.WinResultDuration;
         var state = StateAt(decidedAt + 50);
 
         // Assert
@@ -1787,7 +1809,7 @@ public class RoomTests
         _room.Step(lobbyAt + 50); // 카운트다운이 정해짐
 
         // Act
-        var state = StateAt(lobbyAt + 50 + RoundFlow.Lead); // 카운트다운이 시작함
+        var state = StateAt(lobbyAt + 50 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Assert
         // 장전할 때 모두 처음 자리에서 서로 마주 봄 (기술 설계서 결투장 다시 서기)
@@ -1802,7 +1824,7 @@ public class RoomTests
         _room.Step(1000); // 카운트다운이 정해짐
 
         // Act
-        var state = StateAt(1000 + RoundFlow.Lead); // 카운트다운이 시작함
+        var state = StateAt(1000 + RoundFlow.EnterDuration); // 카운트다운이 시작함
 
         // Assert
         AssertFacesCenterAtStart(state, _a, _b, _c);
@@ -1871,7 +1893,7 @@ public class RoomTests
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 걷기는 재대결하는 사람만 함. 쓰러진 c는 돌지도 걷지도 일어서지도 않음
@@ -1914,7 +1936,7 @@ public class RoomTests
         // Assert
         // 판 도중 나간 사람은 탈락으로 봄. 발사로 정해진 게 아니라 그다음 틱에 한 번만 알림 (기술 설계서 메시지 result)
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
-        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.ResultDuration);
+        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.WinResultDuration);
         Assert.Empty(later.OfType<ResultMessage>());
     }
 
@@ -1939,7 +1961,7 @@ public class RoomTests
         // Assert
         // c는 d보다 D 넘게 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 d 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 d가 이김
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_d], 0);
-        AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.ResultDuration);
+        AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.WinResultDuration);
     }
 
     [Fact]
@@ -2381,7 +2403,7 @@ public class RoomTests
     private static double ScheduleWalk(Room room, double from = 1000)
     {
         room.Step(from); // 카운트다운이 정해짐
-        double countdownAt = from + RoundFlow.Lead;
+        double countdownAt = from + RoundFlow.EnterDuration;
         room.Step(countdownAt); // 카운트다운이 시작하고 걷기가 정해짐
         return countdownAt + RoundFlow.CountdownDuration;
     }
@@ -2390,7 +2412,7 @@ public class RoomTests
     // draw면 그때 서 있는 사람 모두가 결투 시각에 D 키로 총을 뽑음. 그래서 결투 시각 + Drawn부터 쏠 수 있음 (SHEEP-123)
     private static (double AnnouncedAt, double DuelAt) StepUntilDuelAnnounced(Room room, double walkAt, bool draw = true)
     {
-        for (double now = walkAt; now <= walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
+        for (double now = walkAt; now <= walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
         {
             var messages = room.Step(now);
             var phase = messages.OfType<PhaseMessage>().SingleOrDefault();
@@ -2504,7 +2526,7 @@ public class RoomTests
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
         double now = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(now);
-        return now + RoundFlow.ResultDuration;
+        return now + RoundFlow.WinResultDuration;
     }
 
     // 셋이 결투해 a가 c를 맞히고 b는 빗나가, 살아남은 a와 b가 다음 라운드로 가게 함. 다음 라운드 카운트다운 시각을 돌려주고 그 시각의 틱은 부르지 않음.

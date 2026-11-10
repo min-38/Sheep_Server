@@ -9,6 +9,11 @@ public static class RoundFlow
     // ponytail: 임시 값. 기술 설계서 미정 사항의 "미리 알리는 시간"을 플레이해 보며 정하면 그 값으로 바꿈
     public const double Lead = 500;
 
+    // ms. 모두 준비한 뒤 카운트다운까지. 그동안 클라가 술집 바에서 천천히 뒤돌아 스윙 도어를 열고 결투장으로 곧장 나서는 장면을 보여 줌
+    // (사용자 결정 2026-11-10, SHEEP-137). 클라 entrance.ts ENTER_MS와 같아야 함. Lead보다 길어 카운트다운 알림이 늦지 않음.
+    // ponytail: 임시 값. 플레이해 보며 정함
+    public const double EnterDuration = 3000;
+
     // ms. 카운트다운 길이. 그동안 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
     // 장전 모습과 소리는 클라가 이 시각에서 잼
     public const double CountdownDuration = 4000;
@@ -17,16 +22,21 @@ public static class RoundFlow
     // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
     public const double TurnDuration = 1000;
 
+    // ms. 다 돈 뒤 첫 걸음까지 바깥을 보고 제자리에 서서 뜸을 들이는 시간 (사용자 결정 2026-11-10, SHEEP-141).
+    // 클라 round.ts TURN_PAUSE와 같아야 함. ponytail: 임시 값(1초). 플레이해 보며 정함
+    public const double TurnPause = 1000;
+
     // 모두 멈추지 않고 Steps걸음을 StepInterval(ms)마다 StepLength(칸)씩 걸음 (사용자 결정 2026-11-10, SHEEP-120).
-    // 걸음 길이는 마주 선 거리 2 × (StartPlacement.Radius + WalkDistance) = 8칸을 그대로 두려고 0.3칸
+    // 걸음 길이는 마주 선 거리 2 × (StartPlacement.Radius + WalkDistance) = 8칸을 그대로 두려고 0.3칸.
+    // 걸음 간격 0.7초는 무거운 걸음으로 긴장을 주려고 0.5초에서 늦춤 (사용자 결정 2026-11-10, SHEEP-141)
     public const int Steps = 10;
     public const double StepLength = 0.3;
-    public const double StepInterval = 500;
+    public const double StepInterval = 700;
 
     // 칸. 다 걸으면 중심에서 StartPlacement.Radius + 이 거리만큼 떨어짐 (시스템 기획서 판 흐름 시간)
     public const double WalkDistance = Steps * StepLength;
 
-    // ms. 다 돈 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
+    // ms. 뜸을 들인 뒤 걷는 시간. 클라 round.ts WALK_DURATION과 같아야 발소리가 걸음과 맞음
     public const double WalkDuration = Steps * StepInterval;
 
     // ms. 걷기가 끝나고 "시작!"까지 무작위로 기다리는 시간의 범위 (시스템 기획서 판 흐름 시간). ponytail: 임시 값. 플레이해 보며 정함
@@ -37,9 +47,13 @@ public static class RoundFlow
     // 클라가 남은 시간을 보여 줄 때(round.ts DUEL_LIMIT, SHEEP-64) 같은 값을 써야 함. 5초는 사용자 결정 (2026-11-10, SHEEP-127)
     public const double DuelLimit = 5000;
 
-    // ms. 판 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 승리면 준비 중으로, 다음 라운드면 카운트다운으로 넘어감.
+    // ms. 재대결 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 다음 라운드 카운트다운으로 넘어감.
     // ponytail: 임시 값. 플레이해 보며 정함
     public const double ResultDuration = 3000;
+
+    // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니를 보여 준 뒤
+    // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 8500;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)
@@ -49,8 +63,8 @@ public static class RoundFlow
             // 모두 준비했는지는 준비 중에만 봄. 결투 다음(승리, 재대결)은 결과가 정해질 때 Room이 정함
             if (current.Phase == RoundPhase.Lobby && players >= 2 && ready == players)
             {
-                // 아직 준비 중임. 카운트다운을 Lead 뒤로 정해 두고 그때 넘어감
-                return new Round(RoundPhase.Lobby, RoundPhase.Countdown, now + Lead);
+                // 아직 준비 중임. 카운트다운을 술집을 나서는 장면 뒤로 정해 두고 그때 넘어감
+                return new Round(RoundPhase.Lobby, RoundPhase.Countdown, now + EnterDuration);
             }
 
             // 걷기가 시작할 때 정해 둔 결투 시각을 Lead 전에야 알림. Next가 생기면 Room이 알림을 보냄
@@ -70,8 +84,8 @@ public static class RoundFlow
         return current.Next switch
         {
             RoundPhase.Countdown => new Round(RoundPhase.Countdown, RoundPhase.Walk, current.NextAt + CountdownDuration),
-            // 결투 시각은 돌고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
-            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + WalkDuration + DuelWait(seed)),
+            // 결투 시각은 돌고 뜸 들이고 다 걷고 무작위로 더 기다린 뒤. 정해 두기만 하고 Next를 비워 아직 알리지 않음
+            RoundPhase.Walk => new Round(RoundPhase.Walk, null, current.NextAt + TurnDuration + TurnPause + WalkDuration + DuelWait(seed)),
             // 결투 다음은 결과가 정해져야 알 수 있어 시각은 쓰지 않음
             RoundPhase.Duel => new Round(RoundPhase.Duel, null, 0),
             // 승리 결과를 다 보여 주면 준비 중으로 돌아감. 다음 판은 다시 모두 준비할 때 정함

@@ -452,10 +452,10 @@ public class Room
             if (_walkAt != null)
             {
                 // 틱마다 더하지 않고 걷기 시각부터 지난 시간으로 정함. 늦게 온 틱이 있어도 덜 돌거나 덜 걷지 않음.
-                // 먼저 TurnDuration 동안 제자리에서 뒤돌고, 그다음 WalkDuration 동안 걸음 (SHEEP-120)
+                // 먼저 TurnDuration 동안 제자리에서 뒤돌고(SHEEP-120), TurnPause 동안 서서 뜸을 들인 뒤(SHEEP-141), WalkDuration 동안 걸음
                 double elapsed = now - _walkAt.Value;
                 double turned = Math.Clamp(elapsed / RoundFlow.TurnDuration, 0, 1);
-                double ratio = Math.Clamp((elapsed - RoundFlow.TurnDuration) / RoundFlow.WalkDuration, 0, 1);
+                double ratio = Math.Clamp((elapsed - RoundFlow.TurnDuration - RoundFlow.TurnPause) / RoundFlow.WalkDuration, 0, 1);
                 double distance = StartPlacement.Radius + RoundFlow.WalkDistance * ratio;
 
                 foreach (var player in _players)
@@ -475,8 +475,9 @@ public class Room
                     double eased = turned * turned * (3 - 2 * turned);
                     player.Angle = (outward - Math.PI + Math.PI * eased + 4 * Math.PI) % (2 * Math.PI);
 
-                    // 도는 동안에도 제자리에서 발을 떼어 Walk. 클라가 걷기 시각부터 지난 시간으로 도는 발과 걷는 발을 가름
-                    player.Pose = ratio < 1 ? Pose.Walk : Pose.Stand;
+                    // 도는 동안에도 제자리에서 발을 떼어 Walk. 클라가 걷기 시각부터 지난 시간으로 도는 발과 걷는 발을 가름.
+                    // 뜸을 들이는 동안과 다 걸은 뒤에는 Stand
+                    player.Pose = turned < 1 || (ratio > 0 && ratio < 1) ? Pose.Walk : Pose.Stand;
                 }
 
                 // 다 걸으면 그만 계산함. 계속하면 결투 중에 돌 때마다 자리가 원을 따라 미끄러짐
@@ -697,7 +698,7 @@ public class Room
             _rematchers = result.PlayerIds;
             _rematchRounds = result.Rounds;
         }
-        _round = new Round(RoundPhase.Duel, next, now + RoundFlow.ResultDuration);
+        _round = new Round(RoundPhase.Duel, next, now + (next == RoundPhase.Lobby ? RoundFlow.WinResultDuration : RoundFlow.ResultDuration));
 
         // Step은 판이 바뀐 틱에만 다음 단계를 알리는데, 여기서는 판을 직접 바꿔 Step이 바뀐 것을 모름. 그래서 여기서 알림
         messages.Add(result);
