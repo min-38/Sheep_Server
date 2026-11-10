@@ -106,8 +106,9 @@ public class Room
     }
 
     // send는 테스트처럼 보낼 곳이 없으면 null. nickname은 검사를 마친 이름이고, 없으면 임시 이름을 씀.
-    // character는 검사를 마친 캐릭터 번호(Character.IsValid)
-    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0)
+    // character는 검사를 마친 캐릭터 번호(Character.IsValid). color는 검사를 마친 사람 색 번호(PersonColor.IsValid)이고,
+    // 없거나 방 안 다른 사람이 쓰면 비어 있는 가장 작은 색을 줌 (기술 설계서 메시지 joinRoom color)
+    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0, int? color = null)
     {
         lock (_lock)
         {
@@ -121,7 +122,8 @@ public class Room
                 throw new InvalidOperationException("Round in progress.");
             }
 
-            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, FreeColor(), character));
+            int given = color is int wanted && !_players.Exists(p => p.Color == wanted) ? wanted : FreeColor();
+            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, given, character, FreeSeat()));
 
             _currentPlayers++;
             ArrangePlayers();
@@ -210,6 +212,26 @@ public class Room
             if (player != null)
             {
                 player.Ready = ready;
+            }
+        }
+    }
+
+    // 대기실에서 캐릭터와 사람 색을 바꿈. 클라가 보낸 값이라 던지지 않고, 범위 밖이거나 다른 사람이 쓰는 색이거나 판 도중이면
+    // 통째로 버림. 바꾼 값은 다음 state로 감 (기술 설계서 메시지 dress)
+    public void Dress(Guid playerId, int character, int color)
+    {
+        lock (_lock)
+        {
+            if (InRound || !Character.IsValid(character) || !PersonColor.IsValid(color) || _players.Exists(p => p.Color == color && p.Id != playerId))
+            {
+                return;
+            }
+
+            var player = _players.Find(p => p.Id == playerId);
+            if (player != null)
+            {
+                player.Character = character;
+                player.Color = color;
             }
         }
     }
@@ -466,7 +488,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -706,6 +728,17 @@ public class Room
             color++;
         }
         return color;
+    }
+
+    // 지금 방에 있는 사람이 쓰지 않는 가장 작은 좌석 번호. 인원 제한까지만 받아 좌석 수 안에서 늘 찾음. lock 안에서 부름
+    private int FreeSeat()
+    {
+        int seat = 0;
+        while (_players.Exists(p => p.Seat == seat))
+        {
+            seat++;
+        }
+        return seat;
     }
 
     private void ArrangePlayers()

@@ -4,7 +4,7 @@ namespace SheepServer.Rooms;
 
 public class Player
 {
-    public Player(Guid id, double x, double y, double angle, string nickname, int color, int character = 0)
+    public Player(Guid id, double x, double y, double angle, string nickname, int color, int character = 0, int seat = 0)
     {
         Id = id;
         X = x;
@@ -14,6 +14,7 @@ public class Player
         Nickname = nickname;
         Color = color;
         Character = character;
+        Seat = seat;
     }
 
     public Guid Id { get; }
@@ -21,11 +22,14 @@ public class Player
     // 포스터에 쓰는 이름. 같은 이름도 받으므로 사람은 Id와 목수건 색으로 가름
     public string Nickname { get; }
 
-    // 목수건 색 번호(0~7). 방에 있는 동안 바뀌지 않음 (컨셉 기획서 사람 구별)
-    public int Color { get; }
+    // 사람 색 번호(PersonColor). 방 안에서 겹치지 않고, 대기실에서 바꿀 수 있음(Room.Dress). 클라가 핵심 파츠를 이 색으로 칠함 (컨셉 기획서 사람 구별)
+    public int Color { get; set; }
 
-    // 들어올 때 고른 캐릭터 번호(Character). 방에 있는 동안 바뀌지 않음 (시스템 기획서 캐릭터 고르기)
-    public int Character { get; }
+    // 캐릭터 번호(Character). 들어올 때 고르고 대기실에서 바꿀 수 있음(Room.Dress) (시스템 기획서 캐릭터 고르기)
+    public int Character { get; set; }
+
+    // 술집 바 좌석 번호(0 이상 방 인원 제한 미만). 들어올 때 받고 방에 있는 동안 바뀌지 않음. 색을 바꿔도 앉은 자리가 그대로이게 색과 따로 둠
+    public int Seat { get; }
 
     public double X { get; set; }
     public double Y { get; set; }

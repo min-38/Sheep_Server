@@ -290,6 +290,166 @@ public class RoomTests
     }
 
     [Fact]
+    public void AddPlayer_RequestedFreeColor_TakesIt()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b, null, "떠돌이", 0, 5);
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        // 기억한 색을 보내면 비어 있는 한 그 색을 받음 (기술 설계서 메시지 joinRoom color)
+        Assert.Equal(0, Find(state, _a).Color);
+        Assert.Equal(5, Find(state, _b).Color);
+    }
+
+    [Fact]
+    public void AddPlayer_RequestedColorTaken_TakesLowestFree()
+    {
+        // Arrange
+        _room.AddPlayer(_a, null, "보안관", 0, 3);
+        _room.AddPlayer(_b, null, "떠돌이", 0, 3);
+
+        // Act
+        var state = StateAt(0);
+
+        // Assert
+        // 방 안 다른 사람이 쓰는 색이면 거절하지 않고 쓰지 않는 가장 작은 번호를 줌
+        Assert.Equal(3, Find(state, _a).Color);
+        Assert.Equal(0, Find(state, _b).Color);
+    }
+
+    [Fact]
+    public void AddPlayer_Seat_LowestFreeWhateverTheColor()
+    {
+        // Arrange
+        _room.AddPlayer(_a, null, "보안관", 0, 5);
+        _room.AddPlayer(_b, null, "떠돌이", 0, 2);
+        _room.AddPlayer(_c);
+        _room.RemovePlayer(_a);
+
+        // Act
+        _room.AddPlayer(_d, null, "총잡이", 0, 7);
+        var state = StateAt(0);
+
+        // Assert
+        // 좌석은 색과 따로 들어온 순서로 받고, 나간 사람의 좌석은 다음 사람이 받음. 인원 제한이 4라 색 7을 골라도 좌석은 0~3 (SHEEP-118)
+        Assert.Equal(1, Find(state, _b).Seat);
+        Assert.Equal(2, Find(state, _c).Seat);
+        Assert.Equal(0, Find(state, _d).Seat);
+    }
+
+    [Fact]
+    public void Dress_InLobby_ChangesCharacterAndColor()
+    {
+        // Arrange
+        int last = Character.Count - 1;
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+
+        // Act
+        _room.Dress(_a, last, 6);
+        var state = StateAt(0);
+
+        // Assert
+        // 대기실에서 캐릭터와 사람 색을 바꿈. 바뀐 값은 다음 state로 모두에게 감 (기술 설계서 메시지 dress)
+        Assert.Equal(last, Find(state, _a).Character);
+        Assert.Equal(6, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_OwnColor_ChangesCharacterOnly()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        // 캐릭터만 바꿀 때도 지금 색을 함께 보냄
+        _room.Dress(_a, 2, 0);
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(2, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_ColorUsedByOther_Ignored()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+
+        // Act
+        _room.Dress(_b, 4, 0);
+        var state = StateAt(0);
+
+        // Assert
+        // 다른 사람이 쓰는 색이면 캐릭터까지 통째로 버림. 방 안에서 색이 겹치지 않음
+        Assert.Equal(0, Find(state, _b).Character);
+        Assert.Equal(1, Find(state, _b).Color);
+    }
+
+    [Theory]
+    [InlineData(-1, 2)]
+    [InlineData(Character.Count, 2)]
+    [InlineData(1, -1)]
+    [InlineData(1, PersonColor.Count)]
+    public void Dress_OutOfRange_Ignored(int character, int color)
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+
+        // Act
+        _room.Dress(_a, character, color);
+        var state = StateAt(0);
+
+        // Assert
+        // 둘 중 하나라도 범위 밖이면 통째로 버림
+        Assert.Equal(0, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_DuringRound_Ignored()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        _room.Step(1000); // 카운트다운이 정해짐. 여기부터 판 도중
+
+        // Act
+        _room.Dress(_a, 3, 4);
+        var state = StateAt(1050);
+
+        // Assert
+        // 판 도중(카운트다운이 정해진 뒤부터 lobby 시각까지)에는 버림
+        Assert.True(_room.InRound);
+        Assert.Equal(0, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_KeepsSeat_OldColorFreedForNextJoiner()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+
+        // Act
+        _room.Dress(_a, 0, 4);
+        _room.AddPlayer(_c);
+        var state = StateAt(0);
+
+        // Assert
+        // 색을 바꿔도 앉은 자리는 그대로이고, 비운 색은 다음 사람이 받음
+        Assert.Equal(0, Find(state, _a).Seat);
+        Assert.Equal(0, Find(state, _c).Color);
+        Assert.Equal(2, Find(state, _c).Seat);
+    }
+
+    [Fact]
     public void AddPlayer_NoNickname_Placeholder()
     {
         // Arrange
