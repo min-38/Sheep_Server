@@ -1515,7 +1515,7 @@ public class RoomTests
         _room.Fire(_b, 0, HeadAcross, second + Drawn, second + Drawn + 20);
         double won = second + Drawn + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(won);
-        double lobbyAt = won + RoundFlow.ResultDuration;
+        double lobbyAt = won + RoundFlow.WinResultDuration;
         _room.Step(lobbyAt);
         _room.SetReady(_a, true);
         _room.SetReady(_b, true);
@@ -1577,14 +1577,15 @@ public class RoomTests
 
         // Assert
         // b가 맞은 시각에서 D 안에 쏜 발사가 아직 올 수 있어 W + D가 지나야 승리를 정함.
-        // 결과 바로 뒤에 준비 중으로 돌아가는 시각을 알림. 그 시각은 결과를 정한 시각에 결과 시간을 더한 값 (기술 설계서 메시지 result)
+        // 결과 바로 뒤에 준비 중으로 돌아가는 시각을 알림. 그 시각은 결과를 정한 시각에 승리 결과 시간을 더한 값 (기술 설계서 메시지 result).
+        // 승리 결과는 이긴 사람 세레모니를 보여 주려고 재대결 결과보다 김 (SHEEP-136)
         Assert.Equal(_b, Assert.Single(hit.OfType<EliminatedMessage>()).PlayerId);
         Assert.Empty(hit.OfType<ResultMessage>());
         Assert.Empty(waiting.OfType<ResultMessage>());
         Assert.Collection(
             messages,
             m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Win, [_a], 0),
-            m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.ResultDuration),
+            m => AssertPhase(m, RoundPhase.Lobby, now + RoundFlow.WinResultDuration),
             m => Assert.IsType<StateMessage>(m));
     }
 
@@ -1638,12 +1639,12 @@ public class RoomTests
         _room.Step(hitAt + ShotJudge.MaxDelay);
         double decidedAt = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(decidedAt);
-        var lobby = StateAt(decidedAt + RoundFlow.ResultDuration); // 준비 중으로 돌아감
+        var lobby = StateAt(decidedAt + RoundFlow.WinResultDuration); // 준비 중으로 돌아감
 
         // Act
         _room.RemovePlayer(_a);
         _room.AddPlayer(_a);
-        var rejoined = StateAt(decidedAt + RoundFlow.ResultDuration + 50);
+        var rejoined = StateAt(decidedAt + RoundFlow.WinResultDuration + 50);
 
         // Assert
         // 판이 끝나도 방에 있는 동안은 남고, 나가면 사라짐. 계정이 없어 저장하지 않음 (시스템 기획서 방 화면 현상금)
@@ -1656,7 +1657,7 @@ public class RoomTests
     {
         // Arrange
         double duelAt = StartDuel();
-        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.ResultDuration;
+        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.WinResultDuration;
 
         // Act
         var messages = _room.Fire(_a, 0, 0, decidedAt, decidedAt + 20);
@@ -1672,7 +1673,7 @@ public class RoomTests
         double duelAt = StartDuel(); // 둘 다 준비한 채로 판이 돎
 
         // Act
-        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.ResultDuration;
+        double decidedAt = AWins(duelAt + Drawn) - RoundFlow.WinResultDuration;
         var state = StateAt(decidedAt + 50);
 
         // Assert
@@ -1914,7 +1915,7 @@ public class RoomTests
         // Assert
         // 판 도중 나간 사람은 탈락으로 봄. 발사로 정해진 게 아니라 그다음 틱에 한 번만 알림 (기술 설계서 메시지 result)
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
-        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.ResultDuration);
+        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.WinResultDuration);
         Assert.Empty(later.OfType<ResultMessage>());
     }
 
@@ -1939,7 +1940,7 @@ public class RoomTests
         // Assert
         // c는 d보다 D 넘게 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 d 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 d가 이김
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_d], 0);
-        AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.ResultDuration);
+        AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.WinResultDuration);
     }
 
     [Fact]
@@ -2504,7 +2505,7 @@ public class RoomTests
         _room.Fire(_a, Math.PI, HeadAcross, hitAt, hitAt + 20);
         double now = hitAt + ShotJudge.MaxDelay + ShotJudge.MutualWindow;
         _room.Step(now);
-        return now + RoundFlow.ResultDuration;
+        return now + RoundFlow.WinResultDuration;
     }
 
     // 셋이 결투해 a가 c를 맞히고 b는 빗나가, 살아남은 a와 b가 다음 라운드로 가게 함. 다음 라운드 카운트다운 시각을 돌려주고 그 시각의 틱은 부르지 않음.
