@@ -1434,7 +1434,7 @@ public class RoomTests
     }
 
     [Fact]
-    public void Step_BodyHit_TargetGetsWoundedOnly_NoEliminated()
+    public void Step_BodyHit_EveryoneGetsWoundedWithHitPoint_NoEliminated()
     {
         // Arrange
         double duelAt = StartDuel();
@@ -1444,7 +1444,9 @@ public class RoomTests
         var messages = _room.Step(duelAt + 100 + ShotJudge.MaxDelay);
 
         // Assert
-        // 쏜 a에게는 사격 결과(몸, 안 쓰러짐)를, 맞은 b에게만 반샷을 알림. 탈락은 없고 b는 서 있음 (기술 설계서 메시지 wounded)
+        // 쏜 a에게는 사격 결과(몸, 안 쓰러짐)를, 방 안 모두에게 b의 반샷과 맞은 자리를 알림. 맞은 자리는 a 쪽(+x) 몸 옆면.
+        // 탈락은 없고 b는 서 있음 (기술 설계서 메시지 wounded, SHEEP-126)
+        var b = Find(Assert.IsType<StateMessage>(messages[^1]), _b);
         Assert.Collection(
             messages,
             m =>
@@ -1457,11 +1459,33 @@ public class RoomTests
             },
             m =>
             {
-                var direct = Assert.IsType<Direct>(m);
-                Assert.Equal(_b, direct.To);
-                Assert.IsType<WoundedMessage>(direct.Message);
+                var wounded = Assert.IsType<WoundedMessage>(m);
+                Assert.Equal(_b, wounded.PlayerId);
+                Assert.Equal(HitZone.Body, wounded.Zone);
+                Assert.Equal(b.X + HitScan.BodyRadius, wounded.X, Tolerance);
+                Assert.Equal(b.Y, wounded.Y, Tolerance);
             },
             m => Assert.Equal(Pose.Stand, Find(Assert.IsType<StateMessage>(m), _b).Pose));
+    }
+
+    [Fact]
+    public void Step_HeadHit_EliminatedCarriesHitPoint()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, HeadAcross, duelAt + 100, duelAt + 120);
+
+        // Act
+        var messages = _room.Step(duelAt + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 탈락에도 맞은 자리를 담아 모두가 머리에서 피가 튀는 것을 봄 (기술 설계서 메시지 eliminated, SHEEP-126)
+        var b = Find(messages.OfType<StateMessage>().Single(), _b);
+        var eliminated = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal(HitZone.Head, eliminated.Zone);
+        Assert.Equal(b.X + HitScan.HeadRadius, eliminated.X!.Value, Tolerance);
+        Assert.Equal(b.Y, eliminated.Y!.Value, Tolerance);
+        Assert.InRange(eliminated.Height!.Value, HitScan.BodyTop, HitScan.HeadTop);
     }
 
     [Fact]
@@ -1484,7 +1508,7 @@ public class RoomTests
         // Assert
         // 반샷은 판이 끝날 때까지 남아 두 번째 몸 명중에 쓰러짐 (컨셉 기획서 규칙)
         Assert.Equal(_b, Assert.Single(messages.OfType<EliminatedMessage>()).PlayerId);
-        Assert.DoesNotContain(messages.OfType<Direct>(), d => d.Message is WoundedMessage);
+        Assert.Empty(messages.OfType<WoundedMessage>());
     }
 
     [Fact]
@@ -1513,7 +1537,7 @@ public class RoomTests
         Assert.Equal(new[] { _b, _a }, hit.OfType<EliminatedMessage>().Select(m => m.PlayerId));
         AssertResult(Assert.Single(result.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
         Assert.Empty(messages.OfType<EliminatedMessage>());
-        Assert.Equal(_b, Assert.Single(messages.OfType<Direct>(), d => d.Message is WoundedMessage).To);
+        Assert.Equal(_b, Assert.Single(messages.OfType<WoundedMessage>()).PlayerId);
     }
 
     [Fact]
@@ -1574,7 +1598,7 @@ public class RoomTests
         // Assert
         // 판이 끝나면 반샷이 모두 사라져 새 판의 첫 몸 명중은 반샷 하나임
         Assert.Empty(messages.OfType<EliminatedMessage>());
-        Assert.Equal(_b, Assert.Single(messages.OfType<Direct>(), d => d.Message is WoundedMessage).To);
+        Assert.Equal(_b, Assert.Single(messages.OfType<WoundedMessage>()).PlayerId);
     }
 
     [Fact]

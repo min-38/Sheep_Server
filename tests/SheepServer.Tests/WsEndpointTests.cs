@@ -768,7 +768,7 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         await Send(host, JsonSerializer.Serialize(new { type = "fire", angle = Math.PI, pitch = HeadAcross, at = duelAt + 10 }));
 
         // 쏜 사람을 포함해 방 안 모두가 shot을 먼저, eliminated를 그다음에 받음 (기술 설계서 메시지 shot, eliminated).
-        // 그 사이에 쏜 사람만 shotResult를 받음. 맞은 사람은 누가 어디를 맞혔는지 받지 않음
+        // 그 사이에 쏜 사람만 shotResult를 받음. 맞은 사람은 누가 쐈는지 받지 않음 (맞은 자리는 eliminated에 실림, SHEEP-126)
         foreach (var ws in new[] { host, guest })
         {
             var shot = await ReceiveWhere(ws, m => IsType(m, "shot"));
