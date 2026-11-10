@@ -29,8 +29,8 @@ public class RoomRegistry
 
     // Create
     // nickname은 검사를 마친 방장 이름. 없으면 임시 이름 (Room.AddPlayer). name은 검사를 마친 방 이름. 없으면 "방장 닉네임's room".
-    // character와 color는 검사를 마친 방장의 캐릭터 번호와 사람 색 번호. color가 없으면 Room.AddPlayer가 정함
-    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null, int character = 0, int? color = null)
+    // character와 color는 검사를 마친 방장의 캐릭터 번호와 사람 색 번호. color가 없으면 Room.AddPlayer가 정함. hand는 방장이 총을 든 손
+    public string AddRoom(Guid hostId, int maxPlayers, Func<object, Task>? send = null, string? nickname = null, bool isPrivate = false, string? name = null, int character = 0, int? color = null, Hand hand = Hand.Right)
     {
         lock (_rooms)
         {
@@ -62,7 +62,7 @@ public class RoomRegistry
             _ = tickLoop.StartAsync(cts.Token);
 
             // 룸 생성 시 방 만든 방장은 자동 입장
-            JoinRoom(newRoom, hostId, send, nickname, character, color); // "host"는 방장 ID로 가정
+            JoinRoom(newRoom, hostId, send, nickname, character, color, hand); // "host"는 방장 ID로 가정
 
             return roomId;
         }
@@ -75,13 +75,13 @@ public class RoomRegistry
         return _rooms.TryGetValue(roomId, out var room) ? room : null;
     }
 
-    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0, int? color = null)
+    public JoinResult JoinRoom(string? roomId, Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0, int? color = null, Hand hand = Hand.Right)
     {
         lock (_rooms)
         {
             var room = GetRoomById(roomId);
             if (room == null) return JoinResult.NotFound;
-            return JoinRoom(room, playerId, send, nickname, character, color);
+            return JoinRoom(room, playerId, send, nickname, character, color, hand);
         }
     }
 
@@ -145,11 +145,11 @@ public class RoomRegistry
     //     }
     // }
 
-    private JoinResult JoinRoom(Room room, Guid playerId, Func<object, Task>? send, string? nickname, int character, int? color)
+    private JoinResult JoinRoom(Room room, Guid playerId, Func<object, Task>? send, string? nickname, int character, int? color, Hand hand)
     {
         try
         {
-            room.AddPlayer(playerId, send, nickname, character, color);
+            room.AddPlayer(playerId, send, nickname, character, color, hand);
             return JoinResult.Joined;
         }
         catch (InvalidOperationException)

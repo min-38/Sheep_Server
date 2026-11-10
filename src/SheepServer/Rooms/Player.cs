@@ -4,7 +4,7 @@ namespace SheepServer.Rooms;
 
 public class Player
 {
-    public Player(Guid id, double x, double y, double angle, string nickname, int color, int character = 0, int seat = 0)
+    public Player(Guid id, double x, double y, double angle, string nickname, int color, int character = 0, int seat = 0, Hand hand = Hand.Right)
     {
         Id = id;
         X = x;
@@ -15,6 +15,7 @@ public class Player
         Color = color;
         Character = character;
         Seat = seat;
+        Hand = hand;
     }
 
     public Guid Id { get; }
@@ -30,6 +31,9 @@ public class Player
 
     // 술집 바 좌석 번호(0 이상 방 인원 제한 미만). 들어올 때 받고 방에 있는 동안 바뀌지 않음. 색을 바꿔도 앉은 자리가 그대로이게 색과 따로 둠
     public int Seat { get; }
+
+    // 총을 든 손. 들어올 때 받고 방에 있는 동안 바뀌지 않음. 설정에서 바꾼 손은 다음에 들어올 때 반영함 (SHEEP-133)
+    public Hand Hand { get; }
 
     public double X { get; set; }
     public double Y { get; set; }

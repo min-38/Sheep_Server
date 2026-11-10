@@ -119,6 +119,26 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
         return true;
     }
 
+    // 총을 든 손. 없으면 오른손이고, 있으면 "right" 또는 "left"여야 함. 틀리면 false (기술 설계서 메시지 createRoom hand)
+    static bool ReadHand(JsonElement root, out Hand hand)
+    {
+        hand = Hand.Right;
+        if (!root.TryGetProperty("hand", out var h))
+        {
+            return true;
+        }
+        switch (h.ValueKind == JsonValueKind.String ? h.GetString() : null)
+        {
+            case "right":
+                return true;
+            case "left":
+                hand = Hand.Left;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     // 방에 들어간 답(roomCreated, joined). 칠판에 적을 방 이름과 비공개 여부, 바 좌석 수가 되는 인원 제한을 함께 줌 (기술 설계서 메시지 roomCreated)
     object Entered(string type, string code)
     {
@@ -161,6 +181,10 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "color" }];
                     }
+                    if (!ReadHand(root, out Hand hostHand))
+                    {
+                        return [new { type = "error", reason = "hand" }];
+                    }
                     // 방 이름은 없으면 "닉네임's room", 있으면 규칙에 맞아야 함 (시스템 기획서 방 화면 방 만들기)
                     string? roomName = null;
                     if (root.TryGetProperty("name", out var nameProp))
@@ -185,7 +209,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
                     registry.LeaveRoom(roomId, playerId);
-                    roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName, hostCharacter, hostColor);
+                    roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName, hostCharacter, hostColor, hostHand);
                     return [Entered("roomCreated", roomId), mapMessage];
 
                 case "joinRoom":
@@ -201,13 +225,17 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         return [new { type = "error", reason = "color" }];
                     }
+                    if (!ReadHand(root, out Hand guestHand))
+                    {
+                        return [new { type = "error", reason = "hand" }];
+                    }
                     string? code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
                         ? c.GetString()!.ToUpperInvariant() : null;
                     if (code != null && code == roomId)
                     {
                         return [Entered("joined", code), mapMessage];
                     }
-                    switch (registry.JoinRoom(code, playerId, Enqueue, guestName, guestCharacter, guestColor))
+                    switch (registry.JoinRoom(code, playerId, Enqueue, guestName, guestCharacter, guestColor, guestHand))
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
