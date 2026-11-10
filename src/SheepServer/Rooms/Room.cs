@@ -107,8 +107,8 @@ public class Room
 
     // send는 테스트처럼 보낼 곳이 없으면 null. nickname은 검사를 마친 이름이고, 없으면 임시 이름을 씀.
     // character는 검사를 마친 캐릭터 번호(Character.IsValid). color는 검사를 마친 사람 색 번호(PersonColor.IsValid)이고,
-    // 없거나 방 안 다른 사람이 쓰면 비어 있는 가장 작은 색을 줌 (기술 설계서 메시지 joinRoom color)
-    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0, int? color = null)
+    // 없거나 방 안 다른 사람이 쓰면 비어 있는 가장 작은 색을 줌 (기술 설계서 메시지 joinRoom color). hand는 총을 든 손
+    public void AddPlayer(Guid playerId, Func<object, Task>? send = null, string? nickname = null, int character = 0, int? color = null, Hand hand = Hand.Right)
     {
         lock (_lock)
         {
@@ -123,7 +123,7 @@ public class Room
             }
 
             int given = color is int wanted && !_players.Exists(p => p.Color == wanted) ? wanted : FreeColor();
-            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, given, character, FreeSeat()));
+            _players.Add(new Player(playerId, 0, 0, 0, nickname ?? Nickname.Placeholder, given, character, FreeSeat(), hand));
 
             _currentPlayers++;
             ArrangePlayers();
@@ -488,7 +488,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat, player.Hand));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;

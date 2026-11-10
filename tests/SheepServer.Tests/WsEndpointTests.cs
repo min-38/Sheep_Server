@@ -232,6 +232,64 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
         Assert.Equal("color", reply.GetProperty("reason").GetString());
     }
 
+    [Theory]
+    [InlineData("\"up\"")]
+    [InlineData("\"Left\"")]
+    [InlineData("1")]
+    [InlineData("null")]
+    public async Task CreateRoom_BadHand_Error(string hand)
+    {
+        using var host = await Connect();
+
+        var reply = await Request(host, $$"""{"type":"createRoom","nickname":"보안관","hand":{{hand}}}""");
+
+        // 총을 든 손은 right 또는 left (기술 설계서 메시지 createRoom hand)
+        Assert.Equal("error", reply.GetProperty("type").GetString());
+        Assert.Equal("hand", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task JoinRoom_BadHand_ErrorBeforeCode()
+    {
+        using var guest = await Connect();
+
+        // 없는 방 코드여도 손을 먼저 봄. 캐릭터와 같음 (기술 설계서 메시지 joinRoom)
+        var reply = await Request(guest, """{"type":"joinRoom","code":"NOPE00","nickname":"떠돌이","hand":"both"}""");
+
+        Assert.Equal("hand", reply.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task CreateRoom_Hand_OthersSeeItInState()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관","hand":"left"}""");
+        string hostId = created.GetProperty("playerId").GetString()!;
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        // 보내지 않은 사람은 오른손 (기술 설계서 메시지 state hand)
+        var state = await ReceiveWhere(guest, m => IsState(m) && HandOf(m, guestId) != null);
+        Assert.Equal("left", HandOf(state, hostId));
+        Assert.Equal("right", HandOf(state, guestId));
+    }
+
+    [Fact]
+    public async Task JoinRoom_Hand_OthersSeeItInState()
+    {
+        using var host = await Connect();
+        using var guest = await Connect();
+        var created = await Request(host, """{"type":"createRoom","nickname":"보안관"}""");
+        string code = created.GetProperty("code").GetString()!;
+        var joined = await Request(guest, $$"""{"type":"joinRoom","code":"{{code}}","nickname":"떠돌이","hand":"left"}""");
+        string guestId = joined.GetProperty("playerId").GetString()!;
+
+        var state = await ReceiveWhere(host, m => IsState(m) && HandOf(m, guestId) != null);
+        Assert.Equal("left", HandOf(state, guestId));
+    }
+
     [Fact]
     public async Task JoinRoom_Color_TakenGivesLowestFree()
     {
@@ -912,6 +970,19 @@ public class WsEndpointTests(WebApplicationFactory<Program> factory) : IClassFix
             if (player.GetProperty("id").GetString() == id)
             {
                 return player.GetProperty("color").GetInt32();
+            }
+        }
+        return null;
+    }
+
+    // state에서 id가 같은 플레이어의 총을 든 손. 없으면 null
+    static string? HandOf(JsonElement state, string id)
+    {
+        foreach (var player in state.GetProperty("players").EnumerateArray())
+        {
+            if (player.GetProperty("id").GetString() == id)
+            {
+                return player.GetProperty("hand").GetString();
             }
         }
         return null;
