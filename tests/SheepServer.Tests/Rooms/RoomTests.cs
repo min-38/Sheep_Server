@@ -1851,6 +1851,21 @@ public class RoomTests
         AssertFacesCenterAtStart(state, _a, _b, _c);
     }
 
+    // 카운트다운이 정해지면 술집을 나서는 장면 끝에 결투장이 드러남. 그때 이미 모두 가운데를 봐야 카운트다운에 튀지 않음 (SHEEP-167)
+    [Fact]
+    public void Step_CountdownScheduled_EveryoneFacesCenterBeforeItStarts()
+    {
+        // Arrange
+        AddReady(_a, _b, _c); // c가 들어오면 a와 b는 셋의 자리로 옮겨 서지만 각도는 그대로임
+        _room.SetAngle(_a, 1.0, 0.3); // 준비 중에 돌아 둔 각도
+
+        // Act
+        var state = StateAt(1000); // 카운트다운이 정해짐
+
+        // Assert
+        AssertFacesCenterAtStart(state, _a, _b, _c);
+    }
+
     [Fact]
     public void Step_EveryoneOutOfAmmo_ResultRematchAfterLastShotJudged()
     {
