@@ -6,11 +6,17 @@ using SheepServer.Shooting;
 // 기술 설계서 명중 판정: 도착 순서가 아니라 쏜 시각 순서로 판정함. 맞은 뒤에 쏜 발사는 근소한 차이여도 무효라 먼저 쏜 사람만 맞힘.
 // 쏜 시각이 ms까지 같으면 둘 다 유효해 함께 쓰러짐 (사용자 결정 2026-11-11, SHEEP-160).
 // a는 (6.5, 10.5)에서 +x(0)를 보면 b를, b는 (14.5, 10.5)에서 -x(π)를 보면 a를 겨눔. 둘 사이에 벽은 없음.
-// 위아래 0으로 쏘면 몸(반샷), Head로 쏘면 머리(즉사)에 맞음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
+// Body로 쏘면 몸(반샷), Head로 쏘면 머리(즉사)에 맞음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷). 눈높이가 머리 높이라 위아래 0이면 머리에 맞음 (SHEEP-158)
 public class ShotJudgeTests
 {
     // 8칸 떨어진 사람의 머리 가운데를 겨누는 위아래 각도. 머리 옆면(앞으로 8 - HeadRadius)에서 눈높이보다 머리 가운데만큼 위
     private static readonly double Head = Math.Atan(((HitScan.BodyTop + HitScan.HeadTop) / 2 - HitScan.EyeHeight) / (8 - HitScan.HeadRadius));
+
+    // 8칸 떨어진 사람의 몸 가운데를 겨누는 위아래 각도. 몸 옆면(앞으로 8 - BodyRadius)에서 높이 BodyTop / 2
+    private static readonly double Body = Math.Atan((HitScan.BodyTop / 2 - HitScan.EyeHeight) / (8 - HitScan.BodyRadius));
+
+    // c(10.5, 6.5)에서 대각선으로 4√2칸 떨어진 b의 몸 가운데를 겨누는 위아래 각도
+    private static readonly double BodyDiagonal = Math.Atan((HitScan.BodyTop / 2 - HitScan.EyeHeight) / (4 * Math.Sqrt(2) - HitScan.BodyRadius));
 
     private readonly Guid _a = Guid.NewGuid();
     private readonly Guid _b = Guid.NewGuid();
@@ -174,7 +180,7 @@ public class ShotJudgeTests
     public void Judge_BodyOnce_WoundedNotDown()
     {
         // Act
-        var outcomes = ShotJudge.Judge([new Shot(_a, 0, 0, 100)], Duelists(), ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, Body, 100)], Duelists(), ArenaMap.Fixed);
 
         // Assert
         // 다치지 않은 사람의 몸은 반샷 하나라 쓰러지지 않음
@@ -190,7 +196,7 @@ public class ShotJudgeTests
         // Arrange
         // c는 (10.5, 6.5)에서 π/4를 보면 b를 겨눔. a보다 늦게 쏨
         var players = new List<(Guid Id, double X, double Y, double? DownAt, int Wounds)> { (_a, 6.5, 10.5, null, 0), (_b, 14.5, 10.5, null, 0), (_c, 10.5, 6.5, null, 0) };
-        var shots = new[] { new Shot(_c, Math.PI / 4, 0, 150), new Shot(_a, 0, 0, 100) };
+        var shots = new[] { new Shot(_c, Math.PI / 4, BodyDiagonal, 150), new Shot(_a, 0, Body, 100) };
 
         // Act
         var outcomes = ShotJudge.Judge(shots, players, ArenaMap.Fixed);
@@ -212,7 +218,7 @@ public class ShotJudgeTests
         var players = new List<(Guid Id, double X, double Y, double? DownAt, int Wounds)> { (_a, 6.5, 10.5, null, 0), (_b, 14.5, 10.5, null, 1) };
 
         // Act
-        var outcomes = ShotJudge.Judge([new Shot(_a, 0, 0, 100)], players, ArenaMap.Fixed);
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, Body, 100)], players, ArenaMap.Fixed);
 
         // Assert
         var outcome = Assert.Single(outcomes);
