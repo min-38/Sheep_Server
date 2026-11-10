@@ -3,7 +3,8 @@ namespace SheepServer.Tests.Shooting;
 using SheepServer.Arena;
 using SheepServer.Shooting;
 
-// 기술 설계서 명중 판정: 도착 순서가 아니라 쏜 시각 순서로 판정함. 맞은 뒤 D 안에 쏜 발사는 유효해 서로 맞히면 함께 쓰러짐.
+// 기술 설계서 명중 판정: 도착 순서가 아니라 쏜 시각 순서로 판정함. 맞은 뒤에 쏜 발사는 근소한 차이여도 무효라 먼저 쏜 사람만 맞힘.
+// 쏜 시각이 ms까지 같으면 둘 다 유효해 함께 쓰러짐 (사용자 결정 2026-11-11, SHEEP-160).
 // a는 (6.5, 10.5)에서 +x(0)를 보면 b를, b는 (14.5, 10.5)에서 -x(π)를 보면 a를 겨눔. 둘 사이에 벽은 없음.
 // 위아래 0으로 쏘면 몸(반샷), Head로 쏘면 머리(즉사)에 맞음 (컨셉 기획서 규칙 머리는 즉사, 몸은 반샷)
 public class ShotJudgeTests
@@ -51,10 +52,10 @@ public class ShotJudgeTests
     public void Judge_FiredFirstButArrivedLater_FirstShotWins()
     {
         // Arrange
-        // b의 발사가 먼저 도착했지만 a가 D보다 더 먼저 쐈음. 목록은 도착 순서
+        // b의 발사가 먼저 도착했지만 a가 더 먼저 쐈음. 목록은 도착 순서
         var shots = new[]
         {
-            new Shot(_b, Math.PI, Head, 100 + ShotJudge.MutualWindow + 1),
+            new Shot(_b, Math.PI, Head, 101),
             new Shot(_a, 0, Head, 100),
         };
 
@@ -62,18 +63,18 @@ public class ShotJudgeTests
         var outcomes = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
 
         // Assert
-        // a가 먼저 맞힘. b는 맞고 D가 지난 뒤에 쏘아 그 발사는 무효라 결과에도 없음
+        // a가 먼저 맞힘. b는 맞은 뒤에 쏘아 그 발사는 무효라 결과에도 없음
         Assert.Equal(new[] { (_b, 100.0) }, Downs(outcomes));
         Assert.Equal(_a, Assert.Single(outcomes).ShooterId);
     }
 
     [Fact]
-    public void Judge_HitBackWithinMutualWindow_BothDown()
+    public void Judge_HitBackJustAfter_OnlyFirstShooterHits()
     {
         // Arrange
         var shots = new[]
         {
-            new Shot(_b, Math.PI, Head, 100 + ShotJudge.MutualWindow),
+            new Shot(_b, Math.PI, Head, 150),
             new Shot(_a, 0, Head, 100),
         };
 
@@ -81,14 +82,34 @@ public class ShotJudgeTests
         var outcomes = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
 
         // Assert
-        // b는 맞은 뒤 D 안에 쏘아 그 발사도 유효함. 둘 다 쓰러지고 맞은 시각은 맞힌 발사의 쏜 시각
-        Assert.Equal(new[] { (_b, 100.0), (_a, 100 + ShotJudge.MutualWindow) }, Downs(outcomes));
+        // b는 맞은 뒤 0.05초 만에 쐈지만 그 발사는 무효라 a만 맞힘. 재대결 없이 먼저 쏜 a가 이김 (SHEEP-160)
+        Assert.Equal(new[] { (_b, 100.0) }, Downs(outcomes));
+        Assert.Equal(_a, Assert.Single(outcomes).ShooterId);
+    }
+
+    [Fact]
+    public void Judge_SameMillisecond_BothDown()
+    {
+        // Arrange
+        var shots = new[]
+        {
+            new Shot(_b, Math.PI, Head, 100),
+            new Shot(_a, 0, Head, 100),
+        };
+
+        // Act
+        var outcomes = ShotJudge.Judge(shots, Duelists(), ArenaMap.Fixed);
+
+        // Assert
+        // 쏜 시각이 ms까지 같으면 누가 먼저인지 가를 수 없어 둘 다 유효함. 함께 쓰러져 재대결로 감 (SHEEP-160)
+        Assert.Equal(new[] { (_a, 100.0), (_b, 100.0) }, Downs(outcomes));
     }
 
     [Theory]
-    [InlineData(ShotJudge.MutualWindow, true)]
-    [InlineData(ShotJudge.MutualWindow + 1, false)]
-    public void Judge_ShooterDownInEarlierTick_ValidOnlyWithinMutualWindow(double shotAt, bool hit)
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(100, false)]
+    public void Judge_ShooterDownInEarlierTick_ValidOnlyAtSameMillisecond(double shotAt, bool hit)
     {
         // Arrange
         // a는 앞 틱에서 0에 맞았음. 그 뒤에 쏜 발사를 이번 틱에 판정함

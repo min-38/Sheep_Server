@@ -298,8 +298,8 @@ public class Room
                 return messages;
             }
 
-            // 맞았어도 맞은 시각에서 D 안에 쏜 발사는 받음. 서로 맞히면 함께 쓰러짐
-            if (shooter.DownAt != null && at > shooter.DownAt.Value + ShotJudge.MutualWindow)
+            // 맞은 뒤에 쏜 발사는 버림. 맞은 시각과 ms까지 같으면 받아 서로 맞히면 함께 쓰러짐 (SHEEP-160)
+            if (shooter.DownAt != null && at > shooter.DownAt.Value)
             {
                 return messages;
             }
@@ -648,8 +648,8 @@ public class Room
 
         var messages = new List<object>();
 
-        // 쓰러진 사람이 맞은 시각에서 D 안에 쏜 발사가 아직 판정되지 않았을 수 있음. W + D가 지나야 정함 (기술 설계서 메시지 result)
-        if (lastDownAt != null && now < lastDownAt.Value + ShotJudge.MaxDelay + ShotJudge.MutualWindow)
+        // 쓰러진 사람이 맞은 시각과 같은 ms에 쏜 발사가 아직 오지 않았을 수 있음. W가 지나야 정함 (기술 설계서 메시지 result)
+        if (lastDownAt != null && now < lastDownAt.Value + ShotJudge.MaxDelay)
         {
             return messages;
         }
@@ -660,11 +660,11 @@ public class Room
             return messages;
         }
 
-        // 가장 늦게 맞은 사람과, 그 시각에서 D 안에 맞은 사람들. 함께 쓰러진 것임
+        // 가장 늦게 맞은 사람과, 같은 시각에 맞은 사람들. 함께 쓰러진 것임
         var lastDown = new List<Guid>();
         foreach (var player in _players)
         {
-            if (player.Pose == Pose.Down && player.DownAt >= lastDownAt - ShotJudge.MutualWindow)
+            if (player.Pose == Pose.Down && player.DownAt == lastDownAt)
             {
                 lastDown.Add(player.Id);
             }
@@ -676,7 +676,7 @@ public class Room
             return messages;
         }
 
-        // 남은 발사는 이긴 사람이 쏜 것이거나 맞고 D가 지난 뒤의 무효 발사뿐이라 맞을 사람이 없음. 다시 선 사람을 맞히지 않게 버림
+        // 남은 발사는 이긴 사람이 쏜 것이거나 맞은 뒤의 무효 발사뿐이라 맞을 사람이 없음. 다시 선 사람을 맞히지 않게 버림
         _pending.Clear();
 
         // 승리면 준비 중으로, 재대결이면 재대결 카운트다운으로 넘어감
