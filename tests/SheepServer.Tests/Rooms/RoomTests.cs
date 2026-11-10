@@ -590,7 +590,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration;
 
         // Act
         var (announcedAt, duelAt) = StepUntilDuelAnnounced(_room, walkAt);
@@ -712,6 +712,27 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_AfterTurning_PausesInPlaceBeforeWalking()
+    {
+        // Arrange
+        AddReady(_a, _b);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+
+        // Act
+        var pausing = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause / 2);
+        var firstStep = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause);
+
+        // Assert
+        // 다 돈 뒤 바로 걷지 않고 TurnPause 동안 바깥을 보고 제자리에 서서 뜸을 들임 (사용자 결정 2026-11-10, SHEEP-141)
+        var a = Find(pausing, _a);
+        AssertWalked(2, 0, 0, a);
+        AssertFacesOutward(a);
+        Assert.Equal(Pose.Stand, a.Pose);
+        AssertWalked(2, 0, 0, Find(firstStep, _a));
+    }
+
+    [Fact]
     public void Step_HalfwayThroughWalk_HalfTheDistanceOutward()
     {
         // Arrange
@@ -720,7 +741,7 @@ public class RoomTests
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 같은 속도로 걸으니 시간이 절반이면 거리도 절반
@@ -738,7 +759,7 @@ public class RoomTests
         _room.Step(walkAt + 40); // 틱은 50ms마다라 걷기 시각보다 늦게 옴
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 늦게 온 틱부터 재면 덜 걸어서, 걷기가 끝날 때 R + 걷는 거리에 못 미침 (RoundFlow가 NextAt에 더하는 것과 같은 이유)
@@ -751,7 +772,7 @@ public class RoomTests
         // Arrange
         AddReady(_a, _b);
         double walkAt = ScheduleWalk(_room);
-        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration;
+        double walkEnd = walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration;
         _room.Step(walkAt);
 
         // Act
@@ -787,7 +808,7 @@ public class RoomTests
         room.Step(walkAt);
 
         // Act
-        var state = room.Step(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
+        var state = room.Step(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration).OfType<StateMessage>().Single();
 
         // Assert
         // 기술 설계서 결투장 크기: 8명이 걷기를 마쳐도 벽에 닿지 않음
@@ -811,7 +832,7 @@ public class RoomTests
         _room.SetAngle(_a, 1.0);
         var turning = StateAt(walkAt + RoundFlow.TurnDuration / 2);
         _room.SetAngle(_a, 1.0);
-        var walking = StateAt(walkAt + RoundFlow.TurnDuration + 100);
+        var walking = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + 100);
 
         // Assert
         // 돌고 걷는 동안에는 서버가 방향을 정함 (기술 설계서 메시지 turn). 받은 각도로 걸으면 출발한 길에서 벗어남
@@ -1872,7 +1893,7 @@ public class RoomTests
         _room.Step(walkAt);
 
         // Act
-        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration / 2);
+        var state = StateAt(walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration / 2);
 
         // Assert
         // 걷기는 재대결하는 사람만 함. 쓰러진 c는 돌지도 걷지도 일어서지도 않음
@@ -2391,7 +2412,7 @@ public class RoomTests
     // draw면 그때 서 있는 사람 모두가 결투 시각에 D 키로 총을 뽑음. 그래서 결투 시각 + Drawn부터 쏠 수 있음 (SHEEP-123)
     private static (double AnnouncedAt, double DuelAt) StepUntilDuelAnnounced(Room room, double walkAt, bool draw = true)
     {
-        for (double now = walkAt; now <= walkAt + RoundFlow.TurnDuration + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
+        for (double now = walkAt; now <= walkAt + RoundFlow.TurnDuration + RoundFlow.TurnPause + RoundFlow.WalkDuration + RoundFlow.MaxDuelWait; now += 50)
         {
             var messages = room.Step(now);
             var phase = messages.OfType<PhaseMessage>().SingleOrDefault();
