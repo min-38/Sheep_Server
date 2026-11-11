@@ -99,6 +99,39 @@ public class StartPlacementTests
         Assert.Throws<ArgumentOutOfRangeException>(() => StartPlacement.At(count, index, CenterX, CenterY));
     }
 
+    [Fact]
+    public void Order_SameSeed_SameOrder()
+    {
+        // Act & Assert
+        Assert.Equal(StartPlacement.Order(5, 42), StartPlacement.Order(5, 42));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(8)]
+    public void Order_EveryCount_EachSpotOnce(int count)
+    {
+        // Act & Assert
+        // 모두 다른 자리에 서고, 빠지거나 겹치는 자리가 없음 (SHEEP-186)
+        for (int seed = 0; seed < 50; seed++)
+        {
+            Assert.Equal(Enumerable.Range(0, count), StartPlacement.Order(count, seed).Order());
+        }
+    }
+
+    [Fact]
+    public void Order_ManySeeds_EveryOrderOfThreeAppears()
+    {
+        // Act
+        var seen = Enumerable.Range(0, 200).Select(seed => string.Join(",", StartPlacement.Order(3, seed))).ToHashSet();
+
+        // Assert
+        // 셋이 설 수 있는 순서 6가지가 모두 나옴. 들어온 순서로만 서지 않음
+        Assert.Equal(6, seen.Count);
+    }
+
     private static (double X, double Y, double Angle)[] PlaceAll(int count) =>
         Enumerable.Range(0, count).Select(i => StartPlacement.At(count, i, CenterX, CenterY)).ToArray();
 
