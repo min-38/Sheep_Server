@@ -37,11 +37,23 @@ public class RoomTests
     private static readonly double BodyInTriangle = BodyPitch(Math.Sqrt(3) * (StartPlacement.Radius + RoundFlow.WalkDistance));
     private static readonly double BodyInSquare = BodyPitch(Math.Sqrt(2) * (StartPlacement.Radius + RoundFlow.WalkDistance));
 
-    private readonly Room _room = new("TestRoom", 4);
+    // 시작 자리 순서 (SHEEP-186). 들어온 순서면 i번째 사람이 i번 자리에 서고, 거꾸로면 마지막 사람이 0번 자리에 섬
+    private static readonly Func<int, int[]> InJoinOrder = n => [.. Enumerable.Range(0, n)];
+    private static readonly Func<int, int[]> Reversed = n => [.. Enumerable.Range(0, n).Reverse()];
+
+    private readonly Room _room;
     private readonly Guid _a = Guid.NewGuid();
     private readonly Guid _b = Guid.NewGuid();
     private readonly Guid _c = Guid.NewGuid();
     private readonly Guid _d = Guid.NewGuid();
+
+    // 방이 판마다 섞는 시작 자리 순서. 기본은 들어온 순서라 누가 어디 서는지 알고 겨눔. 섞는 테스트만 바꿈
+    private Func<int, int[]> _order = InJoinOrder;
+
+    public RoomTests()
+    {
+        _room = new("TestRoom", 4, startOrder: n => _order(n));
+    }
 
     [Fact]
     public void Step_IncrementsTickNumber()
@@ -835,7 +847,7 @@ public class RoomTests
     public void Step_EightFinishWalk_AllOnEmptyCells()
     {
         // Arrange
-        var room = new Room("Eight", 8);
+        var room = new Room("Eight", 8, startOrder: InJoinOrder);
         var ids = new List<Guid>();
         for (int i = 0; i < 8; i++)
         {
@@ -1915,6 +1927,52 @@ public class RoomTests
 
         // Assert
         AssertFacesCenterAtStart(state, _a, _b, _c);
+    }
+
+    // 판마다 시작 자리를 섞음. 섞은 순서의 k번째 사람이 k번 자리에 섬 (SHEEP-186)
+    [Fact]
+    public void Step_CountdownScheduled_StandsInShuffledOrder()
+    {
+        // Arrange
+        _order = Reversed;
+        AddReady(_a, _b, _c);
+
+        // Act
+        var state = StateAt(1000); // 카운트다운이 정해짐
+
+        // Assert
+        // 술집을 나서는 장면 끝에 결투장이 드러나기 전에 이미 섞은 자리에서 가운데를 봄
+        AssertFacesCenterAtStart(state, _c, _b, _a);
+    }
+
+    [Fact]
+    public void Step_CountdownStarts_KeepsShuffledSpots()
+    {
+        // Arrange
+        _order = Reversed;
+        AddReady(_a, _b, _c);
+        _room.Step(1000); // 카운트다운이 정해짐
+
+        // Act
+        var state = StateAt(1000 + RoundFlow.EnterDuration); // 카운트다운이 시작함
+
+        // Assert
+        AssertFacesCenterAtStart(state, _c, _b, _a);
+    }
+
+    [Fact]
+    public void Step_RematchCountdown_RematchersStandInShuffledOrder()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown();
+        _order = Reversed;
+
+        // Act
+        var state = StateAt(countdownAt);
+
+        // Assert
+        // 재대결하는 둘도 섞은 순서로 그 인원수의 자리에 섬
+        AssertFacesCenterAtStart(state, _b, _a);
     }
 
     [Fact]
