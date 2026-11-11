@@ -366,6 +366,42 @@ public class RoomTests
         Assert.Equal(6, Find(state, _a).Color);
     }
 
+    // 준비한 동안은 캐릭터와 색을 바꿀 수 없음. 바꾸려면 준비를 풂 (SHEEP-170)
+    [Fact]
+    public void Dress_WhileReady_Ignored()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.SetReady(_a, true);
+
+        // Act
+        _room.Dress(_a, 2, 6);
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_AfterUnready_ChangesCharacterAndColor()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.SetReady(_a, true);
+        _room.SetReady(_a, false);
+
+        // Act
+        _room.Dress(_a, 2, 6);
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(2, Find(state, _a).Character);
+        Assert.Equal(6, Find(state, _a).Color);
+    }
+
     [Fact]
     public void Dress_OwnColor_ChangesCharacterOnly()
     {
@@ -1463,6 +1499,21 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_HeadHit_EliminatedCarriesShooter()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, HeadAcross, duelAt + Drawn + 100, duelAt + Drawn + 120);
+
+        // Act
+        var messages = _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 모두에게 가는 탈락에 쓰러뜨린 사람을 담아 판 끝에 누가 쏘았는지 띄움 (기술 설계서 메시지 eliminated, SHEEP-180)
+        Assert.Equal(_a, Assert.Single(messages.OfType<EliminatedMessage>()).ShooterId);
+    }
+
+    [Fact]
     public void Step_WoundedSurvivor_KeepsWound()
     {
         // Arrange
@@ -1851,6 +1902,21 @@ public class RoomTests
         AssertFacesCenterAtStart(state, _a, _b, _c);
     }
 
+    // 카운트다운이 정해지면 술집을 나서는 장면 끝에 결투장이 드러남. 그때 이미 모두 가운데를 봐야 카운트다운에 튀지 않음 (SHEEP-167)
+    [Fact]
+    public void Step_CountdownScheduled_EveryoneFacesCenterBeforeItStarts()
+    {
+        // Arrange
+        AddReady(_a, _b, _c); // c가 들어오면 a와 b는 셋의 자리로 옮겨 서지만 각도는 그대로임
+        _room.SetAngle(_a, 1.0, 0.3); // 준비 중에 돌아 둔 각도
+
+        // Act
+        var state = StateAt(1000); // 카운트다운이 정해짐
+
+        // Assert
+        AssertFacesCenterAtStart(state, _a, _b, _c);
+    }
+
     [Fact]
     public void Step_EveryoneOutOfAmmo_ResultRematchAfterLastShotJudged()
     {
@@ -1876,6 +1942,86 @@ public class RoomTests
             m => AssertResult(Assert.IsType<ResultMessage>(m), Outcome.Rematch, [_a, _b], 1),
             m => AssertPhase(m, RoundPhase.Countdown, now + RoundFlow.ResultDuration),
             m => Assert.IsType<StateMessage>(m));
+    }
+
+    // 킬 수 (SHEEP-169): 쏴서 쓰러뜨리면 쏜 사람에게 하나. 시간 초과는 아무에게도 아님
+    [Fact]
+    public void Step_ShotDown_ShooterGetsKill()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        var state = StateAt(lobbyAt - 1000); // 승리 결과를 보이는 동안
+
+        // Assert
+        Assert.Equal(1, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    [Fact]
+    public void Step_TimeOut_NoKill()
+    {
+        // Arrange
+        double duelAt = StartDuelUndrawn();
+
+        // Act
+        var state = StateAt(duelAt + RoundFlow.DuelLimit + 50); // 둘 다 시간 초과로 쓰러짐
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 함께 쓰러져 다시 서는 사람을 쓰러뜨린 킬은 되돌림. 반샷을 되돌리는 것과 같음
+    [Fact]
+    public void Step_RematchAfterSameMillisecond_KillsUndone()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double shotAt = duelAt + Drawn + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 30);
+        double now = shotAt + ShotJudge.MaxDelay;
+        _room.Step(now); // 둘 다 쓰러져 재대결이 정해짐
+
+        // Act
+        var state = StateAt(now + RoundFlow.ResultDuration); // 재대결 카운트다운이 시작함
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 쓰러진 채 남는 사람을 쓰러뜨린 킬은 재대결로 가도 남음
+    [Fact]
+    public void Step_RematchWithOtherStillDown_KillKept()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown(); // a가 c를 쓰러뜨림
+
+        // Act
+        var state = StateAt(countdownAt);
+
+        // Assert
+        Assert.Equal(1, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 판이 끝나 준비 중으로 돌아가면 킬 수를 지움
+    [Fact]
+    public void Step_BackToLobby_KillsReset()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        var state = StateAt(lobbyAt);
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
     }
 
     [Fact]
@@ -2005,6 +2151,7 @@ public class RoomTests
         var eliminated = messages.OfType<EliminatedMessage>().ToList();
         Assert.Equal(new[] { _b, _c }, eliminated.Select(m => m.PlayerId));
         Assert.All(eliminated, m => Assert.Equal(EliminationReason.Timeout, m.Reason));
+        Assert.All(eliminated, m => Assert.Null(m.ShooterId));
         var state = messages.OfType<StateMessage>().Single();
         Assert.Equal(Pose.Stand, Find(state, _a).Pose);
         Assert.Equal(Pose.Down, Find(state, _b).Pose);

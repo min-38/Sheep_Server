@@ -36,6 +36,7 @@ public class EliminatedMessageTests
         Assert.Equal("timeout", doc.RootElement.GetProperty("reason").GetString());
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("zone").ValueKind);
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("x").ValueKind);
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("shooterId").ValueKind);
     }
 
     [Fact]
@@ -54,5 +55,20 @@ public class EliminatedMessageTests
         Assert.Equal(0.85, root.GetProperty("height").GetDouble());
         Assert.Equal(6.45, root.GetProperty("x").GetDouble());
         Assert.Equal(5.5, root.GetProperty("y").GetDouble());
+    }
+
+    [Fact]
+    public void Serialize_Shot_CarriesShooter()
+    {
+        // Arrange
+        var fallen = Guid.NewGuid();
+        var shooter = Guid.NewGuid();
+
+        // Act
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new EliminatedMessage(fallen, EliminationReason.Shot, HitZone.Head, 0.85, 6.45, 5.5, shooter), JsonSerializerOptions.Web));
+
+        // Assert
+        // 쓰러뜨린 사람. 판 끝 마지막 쓰러짐 보기에 모두가 띄움 (SHEEP-180)
+        Assert.Equal(shooter, doc.RootElement.GetProperty("shooterId").GetGuid());
     }
 }

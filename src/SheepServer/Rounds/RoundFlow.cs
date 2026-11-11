@@ -50,13 +50,16 @@ public static class RoundFlow
     public const double DuelLimit = 5000;
 
     // ms. 재대결 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 다음 라운드 카운트다운으로 넘어감.
+    // 3초는 쓰러진 사람이 1인칭 쓰러짐 장면(클라 downscene.ts SCENE_MS 2.5초) 뒤 재대결 글자를 0.5초쯤만 봐 늘림. 쓰러진 사람은 누운 채
+    // 바닥에 닿고 뜸(클라 TEXT_PAUSE 1.5초)을 들인 뒤 글자를 보고(시간 초과면 결과 뒤 약 3.1초), 그 뒤로도 넉넉히 남게 8초로 둠 (사용자 결정 2026-11-11, SHEEP-175).
     // ponytail: 임시 값. 플레이해 보며 정함
-    public const double ResultDuration = 3000;
+    public const double ResultDuration = 8000;
 
     // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니와 받은 돈 자막을 보여 준 뒤
     // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 승리 곡(9.88초)이 끝까지 나오게 8.5초에서 10초로 늘림
-    // (사용자 결정 2026-11-11, SHEEP-150). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
-    public const double WinResultDuration = 10000;
+    // (사용자 결정 2026-11-11, SHEEP-150). 마지막 쓰러짐을 모두가 위에서 느리게 쓰러져 피가 번지는 데까지 4초 본 뒤 검은 화면 포스터, 뒷모습,
+    // 각자의 자막 카드가 이어지게 12초로 늘림 (사용자 결정 2026-11-11, SHEEP-169 시안 B). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 12000;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)
