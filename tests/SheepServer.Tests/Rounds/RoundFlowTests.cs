@@ -268,6 +268,16 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void ResultDuration_ShowsRematchTextAfterDownScene()
+    {
+        // Assert
+        // 쓰러진 사람은 클라 downscene.ts의 1인칭 쓰러짐 장면(2.5초) 동안 재대결 글자를 보지 못함.
+        // 장면 뒤에도 글자가 적어도 3초 보이게 함 (SHEEP-175)
+        Assert.Equal(6000, RoundFlow.ResultDuration);
+        Assert.True(RoundFlow.ResultDuration >= 2500 + 3000);
+    }
+
+    [Fact]
     public void DuelWait_SameSeed_SameWait()
     {
         // Act

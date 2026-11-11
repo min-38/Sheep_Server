@@ -50,8 +50,9 @@ public static class RoundFlow
     public const double DuelLimit = 5000;
 
     // ms. 재대결 결과를 보여 주는 시간 (시스템 기획서 판 흐름 시간). 이 시간이 지나면 다음 라운드 카운트다운으로 넘어감.
+    // 3초는 쓰러진 사람이 1인칭 쓰러짐 장면(클라 downscene.ts SCENE_MS 2.5초) 뒤 재대결 글자를 0.5초쯤만 봐 6초로 늘림 (사용자 결정 2026-11-11, SHEEP-175).
     // ponytail: 임시 값. 플레이해 보며 정함
-    public const double ResultDuration = 3000;
+    public const double ResultDuration = 6000;
 
     // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니와 받은 돈 자막을 보여 준 뒤
     // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 승리 곡(9.88초)이 끝까지 나오게 8.5초에서 10초로 늘림
