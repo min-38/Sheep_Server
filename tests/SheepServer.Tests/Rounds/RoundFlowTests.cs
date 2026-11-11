@@ -74,8 +74,8 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, 2, 2, Seed);
 
         // Assert
-        // 카운트다운은 4초. 그동안 모두 함께 2.5초에 걸쳐 장전하고 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121)
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + 4000), round);
+        // 카운트다운은 4.5초. 1초 선 채로 있다가 모두 함께 2.5초에 걸쳐 장전하고 권총집에 넣음 (사용자 결정 2026-11-12, SHEEP-206)
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + 4500), round);
     }
 
     [Fact]
@@ -262,8 +262,9 @@ public class RoundFlowTests
     {
         // Assert
         // 승리 곡 Quickest Hand in Town(9.88초)이 끝까지 나온 뒤 준비 중으로 돌아감 (SHEEP-150).
-        // 클라 ceremony.ts는 마지막 쓰러짐을 위에서 느리게 4초(쓰러져 피가 번지는 데까지), 검은 화면 포스터 2.5초, 뒷모습 2.5초, 자막 카드 3초로 나눔 (SHEEP-169 시안 B)
-        Assert.Equal(12000, RoundFlow.WinResultDuration);
+        // 클라 ceremony.ts는 이긴 사람의 1인칭 결정타, 쓰러지는 사람에게 줌, 총 돌려 넣기(진 사람은 위에서 보는 마지막 쓰러짐) 5.5초,
+        // 카메라가 뒤로 빠지며 돌아서기 2.5초, 석양으로 걸으며 결과 보드 10.5초로 나눔 (SHEEP-187 시안 A, SHEEP-194 시안 A)
+        Assert.Equal(18500, RoundFlow.WinResultDuration);
         Assert.True(RoundFlow.WinResultDuration >= 9880);
     }
 
@@ -271,10 +272,10 @@ public class RoundFlowTests
     public void ResultDuration_ShowsRematchTextAfterDownScene()
     {
         // Assert
-        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 뜸(1.5초)을 지나 결과 뒤 약 3.1초에야 재대결 글자를 봄.
-        // 그 뒤로도 글자가 적어도 4초 남게 함 (SHEEP-175)
+        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 자막(3초), 뜸(0.5초)을 지나 결과 뒤 약 5.1초에야
+        // 재대결 글자를 봄 (SHEEP-193). 그 뒤로도 글자가 2.5초 넘게 남게 함 (SHEEP-175)
         Assert.Equal(8000, RoundFlow.ResultDuration);
-        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 1500 + 4000);
+        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 3000 + 500 + 2500);
     }
 
     [Fact]

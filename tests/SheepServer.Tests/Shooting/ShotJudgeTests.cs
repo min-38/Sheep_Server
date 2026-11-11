@@ -149,6 +149,30 @@ public class ShotJudgeTests
         Assert.Equal(new[] { (_c, 100.0) }, Downs(outcomes));
     }
 
+    [Theory]
+    [InlineData(199, true)]
+    [InlineData(200, false)]
+    [InlineData(250, false)]
+    public void Judge_TargetOutLaterThanShot_HitOnlyIfShotFirst(double shotAt, bool hit)
+    {
+        // Arrange
+        // b는 200에 방을 나갔지만 아직 쓰러지지 않아 서 있음. 빠진 시각(DownAt)보다 먼저 쏜 발사만 맞음 (SHEEP-200)
+        var players = new List<(Guid Id, double X, double Y, double? DownAt, int Wounds)> { (_a, 6.5, 10.5, null, 0), (_b, 14.5, 10.5, 200, 0) };
+
+        // Act
+        var outcomes = ShotJudge.Judge([new Shot(_a, 0, Head, shotAt)], players, ArenaMap.Fixed);
+
+        // Assert
+        if (hit)
+        {
+            Assert.Equal(new[] { (_b, shotAt) }, Downs(outcomes));
+        }
+        else
+        {
+            Assert.Null(Assert.Single(outcomes).TargetId);
+        }
+    }
+
     [Fact]
     public void Judge_ShooterLeftRoom_Ignored()
     {

@@ -15,9 +15,9 @@ public static class RoundFlow
     // ponytail: 임시 값. 플레이해 보며 정함
     public const double EnterDuration = 6000;
 
-    // ms. 카운트다운 길이. 그동안 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
-    // 장전 모습과 소리는 클라가 이 시각에서 잼
-    public const double CountdownDuration = 4000;
+    // ms. 카운트다운 길이. 처음 1초는 선 채로 있고(SHEEP-206), 그 뒤 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
+    // 장전 모습과 소리는 클라가 이 시각에서 잼. 4초에서 선 채로 있는 1초를 넣으며 늘림 (사용자 결정 2026-11-12, SHEEP-206)
+    public const double CountdownDuration = 4500;
 
     // ms. 걷기 시각에 중심을 보던 사람이 제자리에서 바깥으로 천천히 뒤도는 시간. 그 뒤에 걸음 (사용자 결정 2026-11-09, SHEEP-120).
     // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
@@ -58,8 +58,11 @@ public static class RoundFlow
     // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니와 받은 돈 자막을 보여 준 뒤
     // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 승리 곡(9.88초)이 끝까지 나오게 8.5초에서 10초로 늘림
     // (사용자 결정 2026-11-11, SHEEP-150). 마지막 쓰러짐을 모두가 위에서 느리게 쓰러져 피가 번지는 데까지 4초 본 뒤 검은 화면 포스터, 뒷모습,
-    // 각자의 자막 카드가 이어지게 12초로 늘림 (사용자 결정 2026-11-11, SHEEP-169 시안 B). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
-    public const double WinResultDuration = 12000;
+    // 각자의 자막 카드가 이어지게 12초로 늘림 (사용자 결정 2026-11-11, SHEEP-169 시안 B). 이긴 사람이 1인칭으로 결정타를 보고 총을 돌려 넣은 뒤
+    // 카메라가 뒤로 빠지며 돌아서 석양으로 걷는 동안 결과 보드(포스터, 문구, 잔고 세어 올리기, 킬 수)를 하나씩 보이게 17초로 늘림
+    // (사용자 결정 2026-11-11, SHEEP-187 시안 A). 내 한 발로 끝낸 이긴 사람이 쓰러지는 사람에게 줌해 느리게 본 뒤 총을 돌려 넣게 18.5초로 늘림
+    // (사용자 결정 2026-11-11, SHEEP-194 시안 A). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 18500;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)

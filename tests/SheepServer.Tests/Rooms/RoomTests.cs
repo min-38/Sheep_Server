@@ -110,7 +110,7 @@ public class RoomTests
         _room.Step(0);
 
         // Act
-        _room.RemovePlayer(_a);
+        _room.RemovePlayer(_a, 0);
         var state = StateAt(0);
 
         // Assert
@@ -249,7 +249,7 @@ public class RoomTests
         _room.AddPlayer(_a);
         _room.AddPlayer(_b);
         _room.AddPlayer(_c);
-        _room.RemovePlayer(_b);
+        _room.RemovePlayer(_b, 0);
 
         // Act
         _room.AddPlayer(_d);
@@ -267,11 +267,11 @@ public class RoomTests
     {
         // Arrange
         AddReady(_a, _b, _c);
-        ScheduleWalk(_room);
+        double walkAt = ScheduleWalk(_room);
 
         // Act
-        _room.RemovePlayer(_a);
-        var state = StateAt(2000);
+        _room.RemovePlayer(_a, walkAt - 100);
+        var state = StateAt(walkAt);
 
         // Assert
         Assert.Equal(1, Find(state, _b).Color);
@@ -347,7 +347,7 @@ public class RoomTests
         _room.AddPlayer(_a, null, "보안관", 0, 5);
         _room.AddPlayer(_b, null, "떠돌이", 0, 2);
         _room.AddPlayer(_c);
-        _room.RemovePlayer(_a);
+        _room.RemovePlayer(_a, 0);
 
         // Act
         _room.AddPlayer(_d, null, "총잡이", 0, 7);
@@ -561,7 +561,7 @@ public class RoomTests
         _room.SetReady(_a, true);
 
         // Act
-        _room.RemovePlayer(_a);
+        _room.RemovePlayer(_a, 0);
         var afterLeave = StateAt(0);
         _room.AddPlayer(_a);
         var afterRejoin = StateAt(0);
@@ -707,12 +707,14 @@ public class RoomTests
         double countdownAt = 1000 + RoundFlow.EnterDuration;
 
         // Act
-        _room.RemovePlayer(_c);
+        _room.RemovePlayer(_c, 1050);
         var messages = _room.Step(countdownAt);
         var state = messages.OfType<StateMessage>().Single();
 
         // Assert
         AssertAnnounces(messages, RoundPhase.Walk, countdownAt + RoundFlow.CountdownDuration); // 남은 둘로 판이 이어짐
+        // 술집을 나서는 장면 동안 나가면 결투장에 서기 전이라 자살 없이 그냥 빠짐 (사용자 결정 2026-11-11, SHEEP-200)
+        Assert.Empty(messages.OfType<EliminatedMessage>());
         Assert.Equal(2, state.Players.Count);
         Assert.DoesNotContain(state.Players, p => p.Id == _c);
         // 남은 사람을 다시 세우면 판 도중에 자리가 바뀜
@@ -1560,7 +1562,7 @@ public class RoomTests
         double both = duelAt + Drawn + 400;
         _room.Fire(_a, AToB, BodyInTriangle, both, both + 20);
         _room.Fire(_b, BToA, HeadInTriangle, both, both + 20);
-        _room.RemovePlayer(_c);
+        _room.RemovePlayer(_c, both);
         double decided = both + ShotJudge.MaxDelay;
         var hit = _room.Step(decided);
         var result = hit;
@@ -1573,7 +1575,7 @@ public class RoomTests
 
         // Assert
         // b가 그 라운드에 맞은 반샷 둘은 라운드 전(0)으로 되돌아가, 이번 몸 명중은 반샷 하나임 (컨셉 기획서 규칙 함께 쓰러짐)
-        Assert.Equal(new[] { _b, _a }, hit.OfType<EliminatedMessage>().Select(m => m.PlayerId));
+        Assert.Equal(new[] { _b, _a }, hit.OfType<EliminatedMessage>().Where(m => m.Reason == EliminationReason.Shot).Select(m => m.PlayerId));
         AssertResult(Assert.Single(result.OfType<ResultMessage>()), Outcome.Rematch, [_a, _b], 1);
         Assert.Empty(messages.OfType<EliminatedMessage>());
         Assert.Equal(_b, Assert.Single(messages.OfType<WoundedMessage>()).PlayerId);
@@ -1747,7 +1749,7 @@ public class RoomTests
         var lobby = StateAt(decidedAt + RoundFlow.WinResultDuration); // 준비 중으로 돌아감
 
         // Act
-        _room.RemovePlayer(_a);
+        _room.RemovePlayer(_a, 0);
         _room.AddPlayer(_a);
         var rejoined = StateAt(decidedAt + RoundFlow.WinResultDuration + 50);
 
@@ -2148,21 +2150,202 @@ public class RoomTests
     }
 
     [Fact]
-    public void RemovePlayer_InDuelLeavingOneAlive_NextStepAnnouncesWin()
+    public void RemovePlayer_StandingInDuel_FallsAsLeftAfterWThenWin()
     {
         // Arrange
         double duelAt = StartDuel();
+        double leftAt = duelAt + 100;
 
         // Act
-        _room.RemovePlayer(_b);
-        var messages = _room.Step(duelAt + 50);
-        var later = _room.Step(duelAt + 100);
+        _room.RemovePlayer(_b, leftAt);
+        var waiting = _room.Step(leftAt + ShotJudge.MaxDelay - 50);
+        var fallen = _room.Step(leftAt + ShotJudge.MaxDelay);
+        var later = _room.Step(leftAt + ShotJudge.MaxDelay + 50);
 
         // Assert
-        // 판 도중 나간 사람은 탈락으로 봄. 발사로 정해진 게 아니라 그다음 틱에 한 번만 알림 (기술 설계서 메시지 result)
-        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
-        AssertAnnounces(messages, RoundPhase.Lobby, duelAt + 50 + RoundFlow.WinResultDuration);
+        // 나간 시각보다 먼저 쏜 발사가 W 안에 올 수 있어 그동안은 선 채로 두고 결과도 정하지 않음.
+        // W가 지나면 자살로 쓰러지고 아무의 킬도 아님. 승리는 그 틱에 한 번만 알림 (사용자 결정 2026-11-11, SHEEP-200)
+        Assert.Empty(waiting.OfType<EliminatedMessage>());
+        Assert.Empty(waiting.OfType<ResultMessage>());
+        Assert.Equal(Pose.Stand, Find(waiting.OfType<StateMessage>().Single(), _b).Pose);
+        var left = Assert.Single(fallen.OfType<EliminatedMessage>());
+        Assert.Equal((_b, EliminationReason.Left), (left.PlayerId, left.Reason));
+        Assert.Null(left.ShooterId);
+        var state = fallen.OfType<StateMessage>().Single();
+        Assert.Equal(Pose.Down, Find(state, _b).Pose);
+        Assert.Equal(0, Find(state, _a).Kills);
+        AssertResult(Assert.Single(fallen.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
+        AssertAnnounces(fallen, RoundPhase.Lobby, leftAt + ShotJudge.MaxDelay + RoundFlow.WinResultDuration);
         Assert.Empty(later.OfType<ResultMessage>());
+        Assert.Empty(later.OfType<EliminatedMessage>());
+    }
+
+    [Fact]
+    public void RemovePlayer_ShotBeforeLeaving_DownedByShooterWithKill()
+    {
+        // Arrange
+        // a가 b의 머리를 쏜 직후 b가 나감. a의 발사는 b가 나간 뒤에 도착함
+        double duelAt = StartDuel();
+        double shotAt = duelAt + Drawn + 100;
+        _room.RemovePlayer(_b, shotAt + 10);
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 30);
+
+        // Act
+        var messages = _room.Step(shotAt + ShotJudge.MaxDelay);
+        var later = _room.Step(shotAt + 10 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 나가기보다 맞은 것이 먼저라 쏜 사람이 쓰러뜨린 것이고 그 사람의 킬임. 나가기로 다시 쓰러뜨리지 않음 (SHEEP-200)
+        var down = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal((_b, EliminationReason.Shot, (Guid?)_a), (down.PlayerId, down.Reason, down.ShooterId));
+        Assert.Equal(1, Find(messages.OfType<StateMessage>().Single(), _a).Kills);
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
+        Assert.Empty(later.OfType<EliminatedMessage>());
+    }
+
+    [Fact]
+    public void RemovePlayer_WoundedThenLeaves_LeftWithoutKill()
+    {
+        // Arrange
+        double duelAt = StartDuelWith(_a, _b, _c);
+        double shotAt = duelAt + Drawn + 100;
+        _room.Fire(_a, AToB, BodyInTriangle, shotAt, shotAt + 20);
+        _room.Step(shotAt + ShotJudge.MaxDelay); // b가 반샷 하나를 맞음
+        double leftAt = shotAt + 300;
+
+        // Act
+        _room.RemovePlayer(_b, leftAt);
+        var messages = _room.Step(leftAt + ShotJudge.MaxDelay);
+
+        // Assert
+        // 반샷만으로는 쓰러뜨리지 않아 자살이고 아무의 킬도 아님 (사용자 결정 2026-11-11, SHEEP-200)
+        var left = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal((_b, EliminationReason.Left), (left.PlayerId, left.Reason));
+        Assert.Equal(0, Find(messages.OfType<StateMessage>().Single(), _a).Kills);
+    }
+
+    [Fact]
+    public void RemovePlayer_LeaverShotNotJudgedYet_Dropped()
+    {
+        // Arrange
+        // b가 a의 머리를 쏘고 판정 전에 나감
+        double duelAt = StartDuel();
+        double shotAt = duelAt + Drawn + 100;
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 20);
+        double leftAt = shotAt + 50;
+        _room.RemovePlayer(_b, leftAt);
+
+        // Act
+        var messages = _room.Step(leftAt + ShotJudge.MaxDelay);
+
+        // Assert
+        // 나간 사람의 발사는 버려 a는 서 있고, b만 나가기로 쓰러짐 (사용자 결정 2026-11-11, 기술 설계서 메시지 fire)
+        Assert.Equal(_b, Assert.Single(messages.OfType<EliminatedMessage>()).PlayerId);
+        AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_a], 0);
+    }
+
+    [Fact]
+    public void RemovePlayer_DuringWalk_FallsAsLeftAndBodyStays()
+    {
+        // Arrange
+        AddReady(_a, _b, _c);
+        double walkAt = ScheduleWalk(_room);
+        _room.Step(walkAt);
+        double leftAt = walkAt + 500;
+
+        // Act
+        _room.RemovePlayer(_c, leftAt);
+        var messages = _room.Step(leftAt + ShotJudge.MaxDelay);
+        var state = messages.OfType<StateMessage>().Single();
+
+        // Assert
+        // "시작!" 전이어도 결투장에 선 뒤라 자살로 쓰러지고 몸은 남음 (사용자 결정 2026-11-11, SHEEP-200)
+        var left = Assert.Single(messages.OfType<EliminatedMessage>());
+        Assert.Equal((_c, EliminationReason.Left), (left.PlayerId, left.Reason));
+        Assert.Equal(3, state.Players.Count);
+        Assert.Equal(Pose.Down, Find(state, _c).Pose);
+    }
+
+    [Fact]
+    public void RemovePlayer_InDuel_BodyStaysUntilLobbyButNotCounted()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double leftAt = duelAt + 100;
+        _room.RemovePlayer(_b, leftAt);
+        double decided = leftAt + ShotJudge.MaxDelay;
+        _room.Step(decided); // b가 쓰러지고 a가 이김
+
+        // Act
+        var during = StateAt(decided + RoundFlow.WinResultDuration - 50);
+        var summary = _room.Summarize();
+        var lobby = StateAt(decided + RoundFlow.WinResultDuration);
+
+        // Assert
+        // 나간 사람의 몸은 판이 끝날 때까지 남지만 방 인원과 방 목록에는 들지 않음. 준비 중으로 돌아가면 빠짐 (SHEEP-200)
+        Assert.Equal(Pose.Down, Find(during, _b).Pose);
+        Assert.Equal(1, _room.CurrentPlayers);
+        Assert.Single(summary.Players);
+        Assert.Equal(_a, Assert.Single(lobby.Players).Id);
+    }
+
+    [Fact]
+    public void RemovePlayer_DownRematcherLeaves_NotStoodAtRematch()
+    {
+        // Arrange
+        // 둘이 같은 ms에 서로 머리를 맞혀 함께 쓰러지고 다음 라운드로 감. 그 결과를 보는 동안 a가 나감
+        double duelAt = StartDuel();
+        double both = duelAt + Drawn + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, both, both + 20);
+        _room.Fire(_b, 0, HeadAcross, both, both + 20);
+        double decided = both + ShotJudge.MaxDelay;
+        _room.Step(decided);
+        _room.RemovePlayer(_a, decided + 100);
+
+        // Act
+        var messages = _room.Step(decided + RoundFlow.ResultDuration);
+        var state = messages.OfType<StateMessage>().Single();
+
+        // Assert
+        // 나간 사람은 다음 라운드로 가지 않아 쓰러진 채 남고, 이미 쓰러져 있어 나가기로 다시 쓰러뜨리지 않음 (SHEEP-200)
+        Assert.Empty(messages.OfType<EliminatedMessage>());
+        Assert.Equal(Pose.Down, Find(state, _a).Pose);
+        Assert.Equal(Pose.Stand, Find(state, _b).Pose);
+    }
+
+    [Fact]
+    public void RemovePlayer_AfterDeadline_TimesOutInstead()
+    {
+        // Arrange
+        // a는 바깥으로 쏴 시간 초과가 아님. b는 제한 시각이 지난 뒤 W 안에 나감
+        double duelAt = StartDuelWith(_a, _b, _c);
+        _room.Fire(_a, 0, 0, duelAt + Drawn, duelAt + Drawn + 20);
+        _room.Step(duelAt + Drawn + ShotJudge.MaxDelay);
+        double deadline = duelAt + RoundFlow.DuelLimit;
+        _room.RemovePlayer(_b, deadline + 50);
+
+        // Act
+        var messages = _room.Step(deadline + ShotJudge.MaxDelay);
+
+        // Assert
+        // 나가기 전에 이미 제한 시각이 지나 시간 초과가 먼저임 (SHEEP-200)
+        Assert.Equal(EliminationReason.Timeout, messages.OfType<EliminatedMessage>().Single(m => m.PlayerId == _b).Reason);
+    }
+
+    [Fact]
+    public void Spectate_LeaverStillStanding_Ignored()
+    {
+        // Arrange
+        // a가 쓰러져 관전할 수 있음. c는 나갔지만 W 동안은 아직 서 있음
+        double now = ADownByB();
+        _room.RemovePlayer(_c, now);
+
+        // Act
+        var spectating = _room.Spectate(_a, _c);
+
+        // Assert
+        // 나간 사람은 방에 없어 관전 대상이 아님 (기술 설계서 메시지 spectate)
+        Assert.Null(spectating);
     }
 
     [Fact]
@@ -2180,12 +2363,14 @@ public class RoomTests
 
         // Act
         // 살아 있던 a와 b가 같은 틱 안에 나감
-        _room.RemovePlayer(_a);
-        _room.RemovePlayer(_b);
-        double now = second + ShotJudge.MaxDelay + 50;
+        double leftAt = second + ShotJudge.MaxDelay + 50;
+        _room.RemovePlayer(_a, leftAt);
+        _room.RemovePlayer(_b, leftAt);
+        double now = leftAt + ShotJudge.MaxDelay;
         var messages = _room.Step(now);
 
         // Assert
+        // 나간 a와 b는 W 뒤에 자살로 쓰러지지만 방에 남은 사람이 아니라 다음 라운드로 가지 않음 (SHEEP-200).
         // d는 c보다 먼저 쓰러져 함께 쓰러진 것이 아님. 가장 늦게 쓰러진 c 혼자라 재대결할 수 없음. 상대가 모두 기권한 것으로 보고 c가 이김
         AssertResult(Assert.Single(messages.OfType<ResultMessage>()), Outcome.Win, [_c], 0);
         AssertAnnounces(messages, RoundPhase.Lobby, now + RoundFlow.WinResultDuration);
@@ -2335,8 +2520,8 @@ public class RoomTests
         // b가 제한 시각 직전에 나가 a 혼자 남음. a는 총알을 든 채 이기고, 결과를 보는 동안 제한 시각이 지남
         double duelAt = StartDuel();
         double deadline = duelAt + RoundFlow.DuelLimit;
-        _room.RemovePlayer(_b);
-        _room.Step(deadline - 50); // 승리가 정해짐
+        _room.RemovePlayer(_b, deadline - 300);
+        _room.Step(deadline - 50); // b가 나가기로 쓰러지고 승리가 정해짐
 
         // Act
         var messages = _room.Step(deadline + ShotJudge.MaxDelay);
@@ -2473,7 +2658,7 @@ public class RoomTests
         _room.Fire(_c, CToB, BodyInTriangle, now + 100, now + 120);
 
         // Act
-        _room.RemovePlayer(_c);
+        _room.RemovePlayer(_c, now + 120);
         var messages = _room.Step(now + 100 + ShotJudge.MaxDelay);
 
         // Assert
