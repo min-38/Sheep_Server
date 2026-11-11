@@ -101,7 +101,8 @@ public class RoomRegistry
         }
     }
 
-    public bool LeaveRoom(string? roomId, Guid playerId)
+    // now는 나간 시각(ms, 서버 시계). 판 도중 나간 사람을 W 뒤에 쓰러뜨리는 데 씀 (Room.RemovePlayer)
+    public bool LeaveRoom(string? roomId, Guid playerId, double now)
     {
         lock (_rooms)
         {
@@ -110,7 +111,7 @@ public class RoomRegistry
 
             try
             {
-                room.RemovePlayer(playerId);
+                room.RemovePlayer(playerId, now);
             }
             catch (InvalidOperationException)
             {

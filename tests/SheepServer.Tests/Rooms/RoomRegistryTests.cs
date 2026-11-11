@@ -101,8 +101,8 @@ public class RoomRegistryTests
         _registry.JoinRoom(roomId, newPlayerId);
 
         // Act
-        _registry.LeaveRoom(roomId, _hostId); // Host leaves
-        _registry.LeaveRoom(roomId, newPlayerId); // New player leaves
+        _registry.LeaveRoom(roomId, _hostId, 0); // Host leaves
+        _registry.LeaveRoom(roomId, newPlayerId, 0); // New player leaves
 
         // Assert
         Assert.Null(_registry.GetRoomById(roomId)); // Room should be removed
@@ -115,7 +115,7 @@ public class RoomRegistryTests
         string roomId = _registry.AddRoom(_hostId, 2);
 
         // Act
-        bool leaveResult = _registry.LeaveRoom(null, _hostId);
+        bool leaveResult = _registry.LeaveRoom(null, _hostId, 0);
 
         // Assert
         Assert.False(leaveResult);
