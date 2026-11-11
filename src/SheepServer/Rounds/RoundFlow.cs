@@ -55,8 +55,9 @@ public static class RoundFlow
 
     // ms. 승리 결과를 보여 주는 시간. 포스터 뒤에 이긴 사람이 해 쪽으로 걸어가고 화면이 동그랗게 닫히는 세레모니와 받은 돈 자막을 보여 준 뒤
     // 준비 중으로 돌아감 (사용자 결정 2026-11-10, SHEEP-136). 승리 곡(9.88초)이 끝까지 나오게 8.5초에서 10초로 늘림
-    // (사용자 결정 2026-11-11, SHEEP-150). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
-    public const double WinResultDuration = 10000;
+    // (사용자 결정 2026-11-11, SHEEP-150). 마지막 쓰러짐을 모두가 위에서 느리게 쓰러져 피가 번지는 데까지 4초 본 뒤 검은 화면 포스터, 뒷모습,
+    // 각자의 자막 카드가 이어지게 12초로 늘림 (사용자 결정 2026-11-11, SHEEP-169 시안 B). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 12000;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)
