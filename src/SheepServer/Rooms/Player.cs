@@ -67,4 +67,10 @@ public class Player
 
     // 이 방에서 이긴 횟수. 클라가 × $100을 현상금으로 적음. 방을 나가면 Player와 함께 사라짐 (시스템 기획서 방 화면 현상금)
     public int Wins { get; set; }
+
+    // 이번 판에 쏴서 쓰러뜨린 사람 수. 판 끝 결과에 각자 자기 것을 보임. 준비 중으로 돌아가면 지움 (SHEEP-169)
+    public int Kills { get; set; }
+
+    // 이번 라운드에 나를 쏴서 쓰러뜨린 사람. 함께 쓰러져 다시 서면 그 사람의 킬을 되돌리는 데 씀. 시간 초과면 null
+    public Guid? DownedBy { get; set; }
 }

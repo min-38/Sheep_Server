@@ -395,6 +395,7 @@ public class Room
                 foreach (var player in _players)
                 {
                     player.Wounds = 0;
+                    player.Kills = 0;
                 }
             }
 
@@ -429,6 +430,13 @@ public class Room
                         if (player.Pose == Pose.Down)
                         {
                             player.Wounds = player.RoundStartWounds;
+
+                            // 다시 서므로 쓰러뜨린 사람의 킬도 되돌림 (SHEEP-169)
+                            var killer = _players.Find(p => p.Id == player.DownedBy);
+                            if (killer != null)
+                            {
+                                killer.Kills--;
+                            }
                         }
                     }
                 }
@@ -494,7 +502,7 @@ public class Room
             List<PlayerState> playerStates = new List<PlayerState>();
             foreach (var player in _players)
             {
-                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat, player.Hand, player.DrawnAt));
+                playerStates.Add(new PlayerState(player.Id, player.X, player.Y, player.Angle, player.Pose, player.Ready, player.Nickname, player.Color, player.Wins, player.Pitch, player.Character, player.Seat, player.Hand, player.DrawnAt, player.Kills));
             }
             messages.Add(new StateMessage(_tickNumber, playerStates));
             return messages;
@@ -543,6 +551,7 @@ public class Room
             player.Pose = Pose.Stand;
             player.Pitch = 0; // 다시 서면 정면을 봄 (시스템 기획서 조작 위아래 보기)
             player.DownAt = null;
+            player.DownedBy = null;
             player.Ammo = rounds;
             player.LastShotAt = null;
             player.DrawnAt = null;
@@ -590,6 +599,14 @@ public class Room
             {
                 target.Pose = Pose.Down;
                 target.DownAt = outcome.At;
+                target.DownedBy = outcome.ShooterId;
+
+                // 쏜 사람이 판정 전에 나갔으면 셀 사람이 없음 (SHEEP-169)
+                var shooter = _players.Find(p => p.Id == outcome.ShooterId);
+                if (shooter != null)
+                {
+                    shooter.Kills++;
+                }
                 messages.Add(new EliminatedMessage(target.Id, EliminationReason.Shot, outcome.Zone, outcome.Height, outcome.X, outcome.Y));
 
                 // 판정이 쏜 시각 순서라 이 발사가 마지막으로 맞힌 발사임. 쓰러진 사람의 다시 보기에만 쓰여 관전자에게 복사하지 않음

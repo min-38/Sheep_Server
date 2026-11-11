@@ -1929,6 +1929,86 @@ public class RoomTests
             m => Assert.IsType<StateMessage>(m));
     }
 
+    // 킬 수 (SHEEP-169): 쏴서 쓰러뜨리면 쏜 사람에게 하나. 시간 초과는 아무에게도 아님
+    [Fact]
+    public void Step_ShotDown_ShooterGetsKill()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        var state = StateAt(lobbyAt - 1000); // 승리 결과를 보이는 동안
+
+        // Assert
+        Assert.Equal(1, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    [Fact]
+    public void Step_TimeOut_NoKill()
+    {
+        // Arrange
+        double duelAt = StartDuelUndrawn();
+
+        // Act
+        var state = StateAt(duelAt + RoundFlow.DuelLimit + 50); // 둘 다 시간 초과로 쓰러짐
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 함께 쓰러져 다시 서는 사람을 쓰러뜨린 킬은 되돌림. 반샷을 되돌리는 것과 같음
+    [Fact]
+    public void Step_RematchAfterSameMillisecond_KillsUndone()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double shotAt = duelAt + Drawn + 100;
+        _room.Fire(_a, Math.PI, HeadAcross, shotAt, shotAt + 20);
+        _room.Fire(_b, 0, HeadAcross, shotAt, shotAt + 30);
+        double now = shotAt + ShotJudge.MaxDelay;
+        _room.Step(now); // 둘 다 쓰러져 재대결이 정해짐
+
+        // Act
+        var state = StateAt(now + RoundFlow.ResultDuration); // 재대결 카운트다운이 시작함
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 쓰러진 채 남는 사람을 쓰러뜨린 킬은 재대결로 가도 남음
+    [Fact]
+    public void Step_RematchWithOtherStillDown_KillKept()
+    {
+        // Arrange
+        double countdownAt = RematchAAndBWithCDown(); // a가 c를 쓰러뜨림
+
+        // Act
+        var state = StateAt(countdownAt);
+
+        // Assert
+        Assert.Equal(1, Find(state, _a).Kills);
+        Assert.Equal(0, Find(state, _b).Kills);
+    }
+
+    // 판이 끝나 준비 중으로 돌아가면 킬 수를 지움
+    [Fact]
+    public void Step_BackToLobby_KillsReset()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        double lobbyAt = AWins(duelAt);
+
+        // Act
+        var state = StateAt(lobbyAt);
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Kills);
+    }
+
     [Fact]
     public void Step_RematchCountdown_RematchersBackOnCircleOthersStayDown()
     {
