@@ -262,8 +262,9 @@ public class RoundFlowTests
     {
         // Assert
         // 승리 곡 Quickest Hand in Town(9.88초)이 끝까지 나온 뒤 준비 중으로 돌아감 (SHEEP-150).
-        // 클라 ceremony.ts는 마지막 쓰러짐을 위에서 느리게 4초(쓰러져 피가 번지는 데까지), 검은 화면 포스터 2.5초, 뒷모습 2.5초, 자막 카드 3초로 나눔 (SHEEP-169 시안 B)
-        Assert.Equal(12000, RoundFlow.WinResultDuration);
+        // 클라 ceremony.ts는 이긴 사람의 1인칭 결정타와 총 돌려 넣기(진 사람은 위에서 보는 마지막 쓰러짐) 4초, 카메라가 뒤로 빠지며 돌아서기 2.5초,
+        // 석양으로 걸으며 결과 보드 10.5초로 나눔 (SHEEP-187 시안 A)
+        Assert.Equal(17000, RoundFlow.WinResultDuration);
         Assert.True(RoundFlow.WinResultDuration >= 9880);
     }
 
