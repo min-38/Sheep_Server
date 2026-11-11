@@ -366,6 +366,42 @@ public class RoomTests
         Assert.Equal(6, Find(state, _a).Color);
     }
 
+    // 준비한 동안은 캐릭터와 색을 바꿀 수 없음. 바꾸려면 준비를 풂 (SHEEP-170)
+    [Fact]
+    public void Dress_WhileReady_Ignored()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.SetReady(_a, true);
+
+        // Act
+        _room.Dress(_a, 2, 6);
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(0, Find(state, _a).Character);
+        Assert.Equal(0, Find(state, _a).Color);
+    }
+
+    [Fact]
+    public void Dress_AfterUnready_ChangesCharacterAndColor()
+    {
+        // Arrange
+        _room.AddPlayer(_a);
+        _room.AddPlayer(_b);
+        _room.SetReady(_a, true);
+        _room.SetReady(_a, false);
+
+        // Act
+        _room.Dress(_a, 2, 6);
+        var state = StateAt(0);
+
+        // Assert
+        Assert.Equal(2, Find(state, _a).Character);
+        Assert.Equal(6, Find(state, _a).Color);
+    }
+
     [Fact]
     public void Dress_OwnColor_ChangesCharacterOnly()
     {

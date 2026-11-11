@@ -216,8 +216,8 @@ public class Room
         }
     }
 
-    // 대기실에서 캐릭터와 사람 색을 바꿈. 클라가 보낸 값이라 던지지 않고, 범위 밖이거나 다른 사람이 쓰는 색이거나 판 도중이면
-    // 통째로 버림. 바꾼 값은 다음 state로 감 (기술 설계서 메시지 dress)
+    // 대기실에서 캐릭터와 사람 색을 바꿈. 클라가 보낸 값이라 던지지 않고, 범위 밖이거나 다른 사람이 쓰는 색이거나 판 도중이거나
+    // 준비한 동안이면 통째로 버림 (SHEEP-170). 바꾼 값은 다음 state로 감 (기술 설계서 메시지 dress)
     public void Dress(Guid playerId, int character, int color)
     {
         lock (_lock)
@@ -228,7 +228,7 @@ public class Room
             }
 
             var player = _players.Find(p => p.Id == playerId);
-            if (player != null)
+            if (player != null && !player.Ready)
             {
                 player.Character = character;
                 player.Color = color;
