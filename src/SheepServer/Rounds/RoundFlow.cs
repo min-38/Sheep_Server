@@ -60,8 +60,9 @@ public static class RoundFlow
     // (사용자 결정 2026-11-11, SHEEP-150). 마지막 쓰러짐을 모두가 위에서 느리게 쓰러져 피가 번지는 데까지 4초 본 뒤 검은 화면 포스터, 뒷모습,
     // 각자의 자막 카드가 이어지게 12초로 늘림 (사용자 결정 2026-11-11, SHEEP-169 시안 B). 이긴 사람이 1인칭으로 결정타를 보고 총을 돌려 넣은 뒤
     // 카메라가 뒤로 빠지며 돌아서 석양으로 걷는 동안 결과 보드(포스터, 문구, 잔고 세어 올리기, 킬 수)를 하나씩 보이게 17초로 늘림
-    // (사용자 결정 2026-11-11, SHEEP-187 시안 A). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
-    public const double WinResultDuration = 17000;
+    // (사용자 결정 2026-11-11, SHEEP-187 시안 A). 내 한 발로 끝낸 이긴 사람이 쓰러지는 사람에게 줌해 느리게 본 뒤 총을 돌려 넣게 18.5초로 늘림
+    // (사용자 결정 2026-11-11, SHEEP-194 시안 A). 클라 ceremony.ts가 이 끝 시각에서 거꾸로 잼. ponytail: 임시 값. 플레이해 보며 정함
+    public const double WinResultDuration = 18500;
 
     // 틱마다 부름. 바뀔 것이 없으면 받은 current를 그대로 돌려줌. seed는 걷기가 시작하는 틱에만 쓰임
     public static Round Advance(Round current, double now, int players, int ready, int seed)
