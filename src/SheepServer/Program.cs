@@ -208,7 +208,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     bool isPrivate = root.TryGetProperty("private", out var p) && p.ValueKind == JsonValueKind.True;
 
                     // 클라는 방 밖에서만 보내지만, 이미 방에 있으면 먼저 나가 두 방에 걸치지 않게 함
-                    registry.LeaveRoom(roomId, playerId);
+                    registry.LeaveRoom(roomId, playerId, ServerClock.Now);
                     roomId = registry.AddRoom(playerId, maxPlayers, Enqueue, hostName, isPrivate, roomName, hostCharacter, hostColor, hostHand);
                     return [Entered("roomCreated", roomId), mapMessage];
 
@@ -239,7 +239,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
                     {
                         case JoinResult.Joined:
                             // 새 방에 들어간 뒤에야 옛 방에서 나감. 코드를 잘못 쳐도 있던 방을 잃지 않게 함
-                            registry.LeaveRoom(roomId, playerId);
+                            registry.LeaveRoom(roomId, playerId, ServerClock.Now);
                             roomId = code;
                             return [Entered("joined", code!), mapMessage];
                         case JoinResult.Full:
@@ -256,7 +256,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
 
                 case "leaveRoom":
                     // 방에 없어도 답함. 대기실의 나가기 버튼이 첫 화면으로 돌아가는 신호로 씀
-                    registry.LeaveRoom(roomId, playerId);
+                    registry.LeaveRoom(roomId, playerId, ServerClock.Now);
                     roomId = null;
                     return [new { type = "left" }];
 
@@ -365,7 +365,7 @@ app.Map("/ws", async (HttpContext context, RoomRegistry registry, ILogger<Progra
     finally
     {
         // 정상 종료든 끊김이든 방에서 빠짐. 마지막 사람이면 방도 지워짐
-        registry.LeaveRoom(roomId, playerId);
+        registry.LeaveRoom(roomId, playerId, ServerClock.Now);
         // 보내는 작업이 소켓을 놓은 뒤에 소켓이 정리되게 기다림. 끊긴 소켓이면 SendAll이 던지지 않고 바로 끝남
         queue.Complete();
         await sending;

@@ -143,15 +143,27 @@ public class Room
         }
     }
 
-    public void RemovePlayer(Guid playerId)
+    // now는 나간 시각(ms, 서버 시계). 판 도중(카운트다운부터)에 나간 사람은 판이 끝날 때까지 몸을 남기고, 서 있었으면 W 뒤에 자살로 쓰러뜨림 (LeaveOut).
+    // 술집을 나서는 장면까지는 결투장에 서기 전이라 그냥 뺌 (사용자 결정 2026-11-11, SHEEP-200)
+    public void RemovePlayer(Guid playerId, double now)
     {
         lock (_lock)
         {
-            var player = _players.Find(p => p.Id == playerId);
+            var player = _players.Find(p => p.Id == playerId && p.LeftAt == null);
             if (player != null)
             {
                 _currentPlayers--;
-                _players.Remove(player);
+                if (_round.Phase == RoundPhase.Lobby)
+                {
+                    _players.Remove(player);
+                }
+                else
+                {
+                    player.LeftAt = now;
+
+                    // 나간 사람이 쏜 발사는 판정 전이면 버림 (기술 설계서 메시지 fire)
+                    _pending.RemoveAll(s => s.ShooterId == playerId);
+                }
                 _senders.Remove(playerId);
 
                 // 나간 사람이 보던 것과 나간 사람을 보던 것을 지움. .NET Core 3.0부터 Dictionary는 도는 중에 Remove해도 됨
@@ -345,7 +357,8 @@ public class Room
 
             var spectator = _players.Find(p => p.Id == spectatorId);
             var target = _players.Find(p => p.Id == targetId);
-            if (spectator == null || spectator.Pose != Pose.Down || target == null || target.Pose == Pose.Down)
+            // 판 도중 나간 사람은 W 동안 서 있어도 방에 없는 사람이라 볼 수 없음 (SHEEP-200)
+            if (spectator == null || spectator.Pose != Pose.Down || target == null || target.Pose == Pose.Down || target.LeftAt != null)
             {
                 return null;
             }
@@ -376,6 +389,9 @@ public class Room
             // 쏜 시각에서 W가 지난 발사를 쏜 시각 순서로 판정함. 뒤에 올 발사는 쏜 시각이 지금 - W보다 늦어 이것들보다 앞설 수 없음
             messages.AddRange(JudgeShots(now));
 
+            // 나간 뒤 W가 지난 사람을 쓰러뜨림. 시간 초과보다 먼저 봐야 제한 시각 전에 나간 사람이 시간 초과가 아니라 나가기로 쓰러짐
+            messages.AddRange(LeaveOut(now));
+
             // 결과는 틱마다 봄. 판 도중 나간 사람은 탈락으로 봄. 시간 초과는 결과를 정하기 전에 봐야 그 틱에 결과가 남은 사람을 셈.
             // 결과가 정해진 뒤에는 결투가 끝난 것이라 총알을 든 승자도 시간 초과로 보지 않음
             if (_round.Phase == RoundPhase.Duel && _round.Next == null)
@@ -396,6 +412,8 @@ public class Room
             // 판이 끝났으므로 반샷도 모두 지움 (컨셉 기획서 규칙)
             if (_round.Next == RoundPhase.Lobby && next.Phase == RoundPhase.Lobby)
             {
+                // 판 도중 나간 사람의 몸은 판이 끝나야 뺌 (SHEEP-200)
+                _players.RemoveAll(p => p.LeftAt != null);
                 PlaceAtStart(_players, Revolver.Capacity);
                 foreach (var player in _players)
                 {
@@ -433,7 +451,8 @@ public class Room
                 var rematching = new List<Player>();
                 foreach (var player in _players)
                 {
-                    if (_rematchers.Contains(player.Id))
+                    // 결과가 정해진 뒤 나간 사람은 다음 라운드로 가지 않고 그 자리에 남음 (SHEEP-200)
+                    if (_rematchers.Contains(player.Id) && player.LeftAt == null)
                     {
                         rematching.Add(player);
 
@@ -527,7 +546,9 @@ public class Room
         lock (_lock)
         {
             var members = new List<RoomMember>();
-            foreach (var player in _players)
+
+            // 판 도중 나간 사람은 몸만 남아 있고 방에 없음 (SHEEP-200)
+            foreach (var player in _players.Where(p => p.LeftAt == null))
             {
                 members.Add(new RoomMember(player.Nickname, player.Color));
             }
@@ -586,10 +607,11 @@ public class Room
         }
         _pending.RemoveAll(s => s.At + ShotJudge.MaxDelay <= now);
 
+        // 판 도중 나가 아직 서 있는 사람은 나간 시각에 빠진 것으로 넘김. 그보다 먼저 쏜 발사만 그 사람을 맞힘 (SHEEP-200)
         var players = new List<(Guid Id, double X, double Y, double? DownAt, int Wounds)>();
         foreach (var player in _players)
         {
-            players.Add((player.Id, player.X, player.Y, player.DownAt, player.Wounds));
+            players.Add((player.Id, player.X, player.Y, player.DownAt ?? player.LeftAt, player.Wounds));
         }
 
         foreach (var outcome in ShotJudge.Judge(due, players, ArenaMap.Fixed))
@@ -633,6 +655,31 @@ public class Room
         return messages;
     }
 
+    // 판 도중 서 있다가 나간 사람을 나간 시각에서 W가 지난 틱에 자살로 쓰러뜨리고, 모두에게 갈 탈락 알림을 돌려줌. 나간 시각보다 먼저 쏜 발사는
+    // 그때까지 다 와서 이 틱의 JudgeShots에서 이미 판정됨. 그 발사에 쓰러졌으면 쏜 사람의 킬로 남아 여기서는 건너뜀. 승리가 정해진 뒤 나간
+    // 이긴 사람은 결투가 끝난 뒤라 선 채로 둠 (사용자 결정 2026-11-11, SHEEP-200). lock 안에서 부름
+    private List<object> LeaveOut(double now)
+    {
+        var messages = new List<object>();
+        if (_round.Next == RoundPhase.Lobby)
+        {
+            return messages;
+        }
+
+        foreach (var player in _players)
+        {
+            if (player.LeftAt is not double leftAt || player.Pose == Pose.Down || now < leftAt + ShotJudge.MaxDelay)
+            {
+                continue;
+            }
+
+            player.Pose = Pose.Down;
+            player.DownAt = leftAt;
+            messages.Add(new EliminatedMessage(player.Id, EliminationReason.Left));
+        }
+        return messages;
+    }
+
     // 제한 시각에서 W가 지났으면 서 있고 아직 쏘지 않은 사람을 모두 자살로 쓰러뜨리고, 모두에게 갈 탈락 알림을 돌려줌 (컨셉 기획서 규칙 제한 시간).
     // 제한 시각 전에 쏜 발사는 W 안에 도착해 이 틱의 JudgeShots에서 이미 판정됨. lock 안에서 부름
     private List<object> TimeOut(double now)
@@ -664,10 +711,19 @@ public class Room
     // 결과가 정해졌으면 판의 다음 단계를 정해 두고 결과와 다음 단계 알림을 돌려줌. 결과가 없으면 빈 목록. lock 안에서 부름
     private List<object> DecideResult(double now)
     {
-        // 쓰러지지 않은 사람과 남은 총알, 그리고 가장 늦게 맞은 시각을 찾음
+        var messages = new List<object>();
+
+        // 서 있다 나간 사람은 W 뒤에 쓰러짐(LeaveOut). 그 전에 정하면 나간 사람을 남은 사람으로 셈 (SHEEP-200)
+        if (_players.Exists(p => p.LeftAt != null && p.Pose != Pose.Down))
+        {
+            return messages;
+        }
+
+        // 방에 남은 사람 중 쓰러지지 않은 사람과 남은 총알, 그리고 가장 늦게 맞은 시각을 찾음. 나간 사람의 몸은 셈하지 않아 다음 라운드로 가지 않음
+        var present = _players.FindAll(p => p.LeftAt == null);
         var alive = new List<(Guid Id, int Ammo)>();
         double? lastDownAt = null;
-        foreach (var player in _players)
+        foreach (var player in present)
         {
             if (player.Pose != Pose.Down)
             {
@@ -678,8 +734,6 @@ public class Room
                 lastDownAt = player.DownAt;
             }
         }
-
-        var messages = new List<object>();
 
         // 쓰러진 사람이 맞은 시각과 같은 ms에 쏜 발사가 아직 오지 않았을 수 있음. W가 지나야 정함 (기술 설계서 메시지 result)
         if (lastDownAt != null && now < lastDownAt.Value + ShotJudge.MaxDelay)
@@ -695,7 +749,7 @@ public class Room
 
         // 가장 늦게 맞은 사람과, 같은 시각에 맞은 사람들. 함께 쓰러진 것임
         var lastDown = new List<Guid>();
-        foreach (var player in _players)
+        foreach (var player in present)
         {
             if (player.Pose == Pose.Down && player.DownAt == lastDownAt)
             {

@@ -73,4 +73,7 @@ public class Player
 
     // 이번 라운드에 나를 쏴서 쓰러뜨린 사람. 함께 쓰러져 다시 서면 그 사람의 킬을 되돌리는 데 씀. 시간 초과면 null
     public Guid? DownedBy { get; set; }
+
+    // 판 도중 방을 나간 시각(ms, 서버 시계). 나가지 않았으면 null. 나간 사람은 판이 끝날 때까지 몸만 남아 state에 실림 (SHEEP-200)
+    public double? LeftAt { get; set; }
 }

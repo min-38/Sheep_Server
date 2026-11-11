@@ -40,6 +40,18 @@ public class EliminatedMessageTests
     }
 
     [Fact]
+    public void Serialize_Left_ReasonLeft()
+    {
+        // Act
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new EliminatedMessage(Guid.NewGuid(), EliminationReason.Left), JsonSerializerOptions.Web));
+
+        // Assert
+        // 판 도중 방을 나가 자살로 쓰러짐. 시간 초과처럼 맞은 자리와 쏜 사람이 없음 (SHEEP-200)
+        Assert.Equal("left", doc.RootElement.GetProperty("reason").GetString());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("shooterId").ValueKind);
+    }
+
+    [Fact]
     public void Serialize_Shot_CarriesHitPoint()
     {
         // Arrange

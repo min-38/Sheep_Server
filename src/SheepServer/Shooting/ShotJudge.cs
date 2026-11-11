@@ -16,7 +16,8 @@ public static class ShotJudge
     public static double ClampAt(double at, double arrivedAt) => Math.Clamp(at, arrivedAt - MaxDelay, arrivedAt);
 
     // shots를 쏜 시각 순서로 판정해 발사마다 결과 하나를 그 순서로 돌려줌. 빗나간 발사도 들어감. 맞은 시각은 맞힌 발사의 쏜 시각(ShotOutcome.At)임.
-    // players는 방 안 사람의 자리, 이미 맞은 시각(서 있으면 null), 반샷 수. 목록에 없는 사람(나간 사람)의 발사와 맞은 뒤의 발사는 버려 결과에도 없음
+    // players는 방 안 사람의 자리, 빠진 시각(맞은 시각이나 판 도중 나간 시각, 서 있으면 null), 반샷 수. 빠진 시각보다 먼저 쏜 발사만 그 사람을 맞힘 (SHEEP-200).
+    // 목록에 없는 사람의 발사와 맞은 뒤의 발사는 버려 결과에도 없음
     public static List<ShotOutcome> Judge(IEnumerable<Shot> shots, IReadOnlyList<(Guid Id, double X, double Y, double? DownAt, int Wounds)> players, ArenaMap map)
     {
         var downAt = new Dictionary<Guid, double?>();
@@ -41,7 +42,8 @@ public static class ShotJudge
                 continue;
             }
 
-            // 쏜 사람과 이미 맞은 사람은 맞지 않음. 맞은 사람은 광선이 지나감
+            // 쏜 사람과 이미 빠진 사람은 맞지 않음. 빠진 사람은 광선이 지나감. 맞아 쓰러진 사람은 맞은 시각이 늘 이 발사보다 이르거나 같고,
+            // 나간 사람만 나간 시각이 이 발사보다 늦을 수 있어 그때는 아직 맞음
             double x = 0;
             double y = 0;
             var targets = new List<(Guid Id, double X, double Y)>();
@@ -52,7 +54,7 @@ public static class ShotJudge
                     x = player.X;
                     y = player.Y;
                 }
-                else if (downAt[player.Id] == null)
+                else if (downAt[player.Id] is not double outAt || shot.At < outAt)
                 {
                     targets.Add((player.Id, player.X, player.Y));
                 }
