@@ -268,6 +268,16 @@ public class RoundFlowTests
     }
 
     [Fact]
+    public void ResultDuration_ShowsRematchTextAfterDownScene()
+    {
+        // Assert
+        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 뜸(1.5초)을 지나 결과 뒤 약 3.1초에야 재대결 글자를 봄.
+        // 그 뒤로도 글자가 적어도 4초 남게 함 (SHEEP-175)
+        Assert.Equal(8000, RoundFlow.ResultDuration);
+        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 1500 + 4000);
+    }
+
+    [Fact]
     public void DuelWait_SameSeed_SameWait()
     {
         // Act
