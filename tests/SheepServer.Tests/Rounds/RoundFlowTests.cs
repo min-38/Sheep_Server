@@ -74,8 +74,8 @@ public class RoundFlowTests
         var round = RoundFlow.Advance(new Round(RoundPhase.Lobby, RoundPhase.Countdown, 1500), 1500, 2, 2, Seed);
 
         // Assert
-        // 카운트다운은 4초. 그동안 모두 함께 2.5초에 걸쳐 장전하고 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121)
-        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + 4000), round);
+        // 카운트다운은 4.5초. 1초 선 채로 있다가 모두 함께 2.5초에 걸쳐 장전하고 권총집에 넣음 (사용자 결정 2026-11-12, SHEEP-206)
+        Assert.Equal(new Round(RoundPhase.Countdown, RoundPhase.Walk, 1500 + 4500), round);
     }
 
     [Fact]
@@ -272,10 +272,10 @@ public class RoundFlowTests
     public void ResultDuration_ShowsRematchTextAfterDownScene()
     {
         // Assert
-        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 뜸(1.5초)을 지나 결과 뒤 약 3.1초에야 재대결 글자를 봄.
-        // 그 뒤로도 글자가 적어도 4초 남게 함 (SHEEP-175)
+        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 자막(3초), 뜸(0.5초)을 지나 결과 뒤 약 5.1초에야
+        // 재대결 글자를 봄 (SHEEP-193). 그 뒤로도 글자가 2.5초 넘게 남게 함 (SHEEP-175)
         Assert.Equal(8000, RoundFlow.ResultDuration);
-        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 1500 + 4000);
+        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 3000 + 500 + 2500);
     }
 
     [Fact]

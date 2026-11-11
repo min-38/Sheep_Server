@@ -15,9 +15,9 @@ public static class RoundFlow
     // ponytail: 임시 값. 플레이해 보며 정함
     public const double EnterDuration = 6000;
 
-    // ms. 카운트다운 길이. 그동안 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
-    // 장전 모습과 소리는 클라가 이 시각에서 잼
-    public const double CountdownDuration = 4000;
+    // ms. 카운트다운 길이. 처음 1초는 선 채로 있고(SHEEP-206), 그 뒤 모두 함께 2.5초에 걸쳐 장전하고 총을 권총집에 넣음 (사용자 결정 2026-11-10, SHEEP-121).
+    // 장전 모습과 소리는 클라가 이 시각에서 잼. 4초에서 선 채로 있는 1초를 넣으며 늘림 (사용자 결정 2026-11-12, SHEEP-206)
+    public const double CountdownDuration = 4500;
 
     // ms. 걷기 시각에 중심을 보던 사람이 제자리에서 바깥으로 천천히 뒤도는 시간. 그 뒤에 걸음 (사용자 결정 2026-11-09, SHEEP-120).
     // ponytail: 임시 값(약 1초로 시작). 플레이해 보며 정함
