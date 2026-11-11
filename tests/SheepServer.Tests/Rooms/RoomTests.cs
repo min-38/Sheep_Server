@@ -1499,6 +1499,21 @@ public class RoomTests
     }
 
     [Fact]
+    public void Step_HeadHit_EliminatedCarriesShooter()
+    {
+        // Arrange
+        double duelAt = StartDuel();
+        _room.Fire(_a, Math.PI, HeadAcross, duelAt + Drawn + 100, duelAt + Drawn + 120);
+
+        // Act
+        var messages = _room.Step(duelAt + Drawn + 100 + ShotJudge.MaxDelay);
+
+        // Assert
+        // 모두에게 가는 탈락에 쓰러뜨린 사람을 담아 판 끝에 누가 쏘았는지 띄움 (기술 설계서 메시지 eliminated, SHEEP-180)
+        Assert.Equal(_a, Assert.Single(messages.OfType<EliminatedMessage>()).ShooterId);
+    }
+
+    [Fact]
     public void Step_WoundedSurvivor_KeepsWound()
     {
         // Arrange
@@ -2136,6 +2151,7 @@ public class RoomTests
         var eliminated = messages.OfType<EliminatedMessage>().ToList();
         Assert.Equal(new[] { _b, _c }, eliminated.Select(m => m.PlayerId));
         Assert.All(eliminated, m => Assert.Equal(EliminationReason.Timeout, m.Reason));
+        Assert.All(eliminated, m => Assert.Null(m.ShooterId));
         var state = messages.OfType<StateMessage>().Single();
         Assert.Equal(Pose.Stand, Find(state, _a).Pose);
         Assert.Equal(Pose.Down, Find(state, _b).Pose);
