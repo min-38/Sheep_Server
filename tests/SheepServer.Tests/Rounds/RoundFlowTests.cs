@@ -271,10 +271,10 @@ public class RoundFlowTests
     public void ResultDuration_ShowsRematchTextAfterDownScene()
     {
         // Assert
-        // 쓰러진 사람은 클라 downscene.ts의 1인칭 쓰러짐 장면에서 바닥에 닿은 뒤에야 재대결 글자를 봄.
-        // 장면(2.5초)이 다 끝난 뒤에도 글자가 적어도 3초 남게 함 (SHEEP-175)
-        Assert.Equal(6000, RoundFlow.ResultDuration);
-        Assert.True(RoundFlow.ResultDuration >= 2500 + 3000);
+        // 시간 초과로 쓰러진 사람은 클라에서 자살(0.7초), 넘어져 바닥에 닿기(0.83초), 뜸(1.5초)을 지나 결과 뒤 약 3.1초에야 재대결 글자를 봄.
+        // 그 뒤로도 글자가 적어도 4초 남게 함 (SHEEP-175)
+        Assert.Equal(8000, RoundFlow.ResultDuration);
+        Assert.True(RoundFlow.ResultDuration >= 100 + 700 + 830 + 1500 + 4000);
     }
 
     [Fact]
