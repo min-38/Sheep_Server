@@ -46,9 +46,14 @@ public class Room
     private IReadOnlyList<Guid>? _rematchers;
     private int _rematchRounds;
 
-    // name은 검사를 마친 방 이름. 테스트처럼 이름이 상관없으면 비워 둠
-    public Room(string roomId, int maxPlayers, bool isPrivate = false, string name = "")
+    // 인원수를 받아 시작 자리를 섞은 순서를 줌 (StartPlacement.Order). 판과 재대결마다 부름 (SHEEP-186)
+    private readonly Func<int, int[]> _startOrder;
+
+    // name은 검사를 마친 방 이름. 테스트처럼 이름이 상관없으면 비워 둠.
+    // startOrder가 없으면 판마다 무작위로 섞음. 테스트는 누가 어디 서는지 알아야 해 정한 순서를 넣음
+    public Room(string roomId, int maxPlayers, bool isPrivate = false, string name = "", Func<int, int[]>? startOrder = null)
     {
+        _startOrder = startOrder ?? (count => StartPlacement.Order(count, Random.Shared.Next()));
         _roomId = roomId;
         MaxPlayers = maxPlayers;
         IsPrivate = isPrivate;
@@ -405,6 +410,13 @@ public class Room
             // 시작할 때 다시 맞추는 것은 SetAngle이 그 장면 동안의 turn은 아직 받아 늦게 온 turn이 각도를 바꿀 수 있기 때문임
             bool scheduled = _round.Next == null && next.Phase == RoundPhase.Lobby && next.Next == RoundPhase.Countdown;
             bool starts = _rematchers == null && _round.Phase != RoundPhase.Countdown && next.Phase == RoundPhase.Countdown;
+
+            // 판마다 시작 자리를 섞어 세움. 정해질 때 섞어야 술집을 나서는 장면 끝에 결투장이 드러날 때 이미 그 자리에 섬.
+            // 준비 중에 섞으면 누가 들고 날 때 ArrangePlayers가 들어온 순서로 되돌림 (SHEEP-186)
+            if (scheduled)
+            {
+                PlaceAtStart(Shuffled(_players), Revolver.Capacity);
+            }
             if (scheduled || starts)
             {
                 foreach (var player in _players)
@@ -440,7 +452,7 @@ public class Room
                         }
                     }
                 }
-                PlaceAtStart(rematching, _rematchRounds);
+                PlaceAtStart(Shuffled(rematching), _rematchRounds);
                 _rematchers = null;
             }
 
@@ -762,6 +774,9 @@ public class Room
         }
         return seat;
     }
+
+    // players를 섞은 시작 자리 순서로 늘어놓음. 이대로 PlaceAtStart에 넘기면 k번째 사람이 k번 자리에 섬 (SHEEP-186)
+    private List<Player> Shuffled(List<Player> players) => [.. _startOrder(players.Count).Select(i => players[i])];
 
     private void ArrangePlayers()
     {

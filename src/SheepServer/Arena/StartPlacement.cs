@@ -24,4 +24,13 @@ public static class StartPlacement
 
         return (x, y, angle);
     }
+
+    // 판마다 시작 자리를 섞은 순서. 돌려준 배열의 k번 값은 k번 자리에 설 사람의 번호(들어온 순서)임.
+    // 같은 시드면 같은 순서라 테스트에서 미리 알 수 있음 (SHEEP-186)
+    public static int[] Order(int count, int seed)
+    {
+        int[] order = [.. Enumerable.Range(0, count)];
+        new Random(seed).Shuffle(order);
+        return order;
+    }
 }
